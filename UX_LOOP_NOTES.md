@@ -15,3 +15,13 @@ Fix:
 - Add `researchLinks` and lodging budget targets to itinerary options, render links in UI cards.
 - Add a visible "Missing info" checklist block in the UI.
 - Grant `anyone` `writer` permission on generated Google Sheets and include links columns in exported itinerary rows.
+
+## Iteration 2
+
+Issue:
+- Interface still felt visually dated and did not surface organizer workflow artifacts clearly.
+
+Fix:
+- Modernized layout into a desktop two-column workspace (chat + actions), with responsive mobile fallback.
+- Added stronger typography, card hierarchy, and staged card entrance animations.
+- Kept organizer actions in-panel with direct Lodging/Gear/Grocery/Takeout links per itinerary option.

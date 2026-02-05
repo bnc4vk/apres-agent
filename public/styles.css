@@ -1,18 +1,21 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 * {
   box-sizing: border-box;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 900px at 20% -10%, rgba(74, 163, 255, 0.25), transparent 50%),
-    radial-gradient(900px 700px at 80% 10%, rgba(119, 183, 255, 0.18), transparent 55%),
-    linear-gradient(180deg, #071624, #081b2b);
+  background:
+    radial-gradient(1200px 900px at 10% -10%, rgba(107, 183, 255, 0.3), transparent 50%),
+    radial-gradient(900px 700px at 90% 0%, rgba(26, 212, 189, 0.2), transparent 52%),
+    linear-gradient(170deg, #071420, #082335 60%, #0a2a3f);
   color: #f5f7fa;
 }
 
 .app {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   min-height: 100vh;
   display: flex;
@@ -22,12 +25,21 @@ body {
 
 header h1 {
   margin-bottom: 4px;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  font-size: clamp(2rem, 3.8vw, 2.8rem);
 }
 
 header p {
   margin-top: 0;
-  color: #b5c2d5;
+  color: #c8d6ea;
+  max-width: 720px;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .chat {
@@ -35,12 +47,17 @@ header p {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 16px 0;
+  padding: 16px;
+  background: rgba(8, 22, 35, 0.6);
+  border: 1px solid rgba(132, 171, 216, 0.25);
+  border-radius: 20px;
+  min-height: 56vh;
+  backdrop-filter: blur(10px);
 }
 
 .bubble {
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: 18px;
   max-width: 70%;
   line-height: 1.4;
   white-space: pre-wrap;
@@ -49,13 +66,14 @@ header p {
 
 .bubble.user {
   align-self: flex-end;
-  background: linear-gradient(180deg, #2c6aa2, #255b8d);
+  background: linear-gradient(180deg, #36a4ff, #1f6eb7);
+  color: #ecf6ff;
 }
 
 .bubble.assistant {
   align-self: flex-start;
-  background: rgba(16, 32, 50, 0.65);
-  border: 1px solid rgba(120, 150, 190, 0.18);
+  background: rgba(21, 40, 61, 0.8);
+  border: 1px solid rgba(120, 167, 214, 0.25);
   backdrop-filter: blur(8px);
 }
 
@@ -97,6 +115,8 @@ header p {
   display: flex;
   gap: 12px;
   padding: 16px 0;
+  max-width: 860px;
+  margin-top: 6px;
 }
 
 .chat-form input {
@@ -141,7 +161,13 @@ header p {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin: 8px 0 24px;
+  margin: 0 0 24px;
+  padding: 16px;
+  background: rgba(10, 26, 40, 0.62);
+  border: 1px solid rgba(124, 168, 214, 0.22);
+  border-radius: 20px;
+  min-height: 56vh;
+  animation: appear 220ms ease;
 }
 
 .card-grid {
@@ -153,9 +179,10 @@ header p {
 .card {
   padding: 14px 16px;
   border-radius: 14px;
-  background: rgba(14, 28, 44, 0.7);
+  background: rgba(18, 37, 56, 0.78);
   border: 1px solid rgba(120, 150, 190, 0.2);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+  animation: rise 240ms ease both;
 }
 
 .card h3 {
@@ -222,4 +249,39 @@ header p {
   border: 1px solid rgba(135, 176, 229, 0.35);
   padding: 4px 8px;
   border-radius: 999px;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 920px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+  .chat,
+  .actions {
+    min-height: unset;
+  }
+  .bubble {
+    max-width: 88%;
+  }
 }
