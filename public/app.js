@@ -1,18 +1,22 @@
 const chat = document.getElementById("chat");
+const actions = document.getElementById("actions");
 const form = document.getElementById("chat-form");
 const input = document.getElementById("chat-input");
 
-let sessionId = localStorage.getItem("skiPlannerSessionId");
+let sessionId = null;
 let inFlight = false;
+const state = {
+  decisionPackage: null,
+  sheetUrl: null,
+  googleLinked: false
+};
 
 async function init() {
   const response = await fetch("/api/session");
   const data = await response.json();
-  sessionId = data.sessionId;
-  localStorage.setItem("skiPlannerSessionId", sessionId);
-  if (data.welcome) {
-    addMessage("assistant", data.welcome);
-  }
+  sessionId = data.sessionId ?? null;
+  renderMessages(data.messages ?? []);
+  updateState(data);
 }
 
 function addMessage(role, content) {
@@ -22,6 +26,11 @@ function addMessage(role, content) {
   chat.appendChild(bubble);
   chat.scrollTop = chat.scrollHeight;
   return bubble;
+}
+
+function renderMessages(messages) {
+  chat.innerHTML = "";
+  messages.forEach((message) => addMessage(message.role, message.content));
 }
 
 function addTypingIndicator() {
@@ -36,6 +45,102 @@ function addTypingIndicator() {
 function setFormEnabled(enabled) {
   input.disabled = !enabled;
   form.querySelector("button").disabled = !enabled;
+}
+
+function updateState(data) {
+  state.decisionPackage = data.decisionPackage ?? null;
+  state.sheetUrl = data.sheetUrl ?? null;
+  state.googleLinked = Boolean(data.googleLinked);
+  renderActions();
+}
+
+function renderActions() {
+  actions.innerHTML = "";
+  if (!state.decisionPackage) return;
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Itinerary options";
+  actions.appendChild(heading);
+
+  const grid = document.createElement("div");
+  grid.className = "card-grid";
+  (state.decisionPackage.itineraries ?? []).forEach((itinerary) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = itinerary.title;
+    const summary = document.createElement("p");
+    summary.textContent = itinerary.summary;
+    const button = document.createElement("button");
+    button.textContent = "Expand option";
+    button.addEventListener("click", () => expandItinerary(itinerary.id));
+    card.append(title, summary, button);
+    grid.appendChild(card);
+  });
+  actions.appendChild(grid);
+
+  const exportWrap = document.createElement("div");
+  if (state.sheetUrl) {
+    const link = document.createElement("a");
+    link.href = state.sheetUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.className = "sheet-link";
+    link.textContent = "Open Google Sheet";
+    exportWrap.appendChild(link);
+  } else {
+    const button = document.createElement("button");
+    button.textContent = state.googleLinked ? "Export to Google Sheets" : "Link Google to export";
+    button.addEventListener("click", exportToSheets);
+    exportWrap.appendChild(button);
+  }
+  actions.appendChild(exportWrap);
+}
+
+async function exportToSheets() {
+  if (!state.decisionPackage) return;
+  if (!state.googleLinked) {
+    window.location.href = "/api/auth/google/start";
+    return;
+  }
+  try {
+    const response = await fetch("/api/export/sheets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to export.");
+    if (data.sheetUrl) {
+      state.sheetUrl = data.sheetUrl;
+      renderActions();
+      window.open(data.sheetUrl, "_blank", "noopener");
+    }
+  } catch (error) {
+    addMessage("assistant", "Sorry — I couldn't export the sheet yet. Please try again.");
+    console.error(error);
+  }
+}
+
+async function expandItinerary(itineraryId) {
+  try {
+    const response = await fetch("/api/itinerary/expand", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, itineraryId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to expand itinerary.");
+    if (data.messages) {
+      renderMessages(data.messages);
+    } else if (data.reply) {
+      addMessage("assistant", data.reply);
+    }
+    updateState(data);
+  } catch (error) {
+    addMessage("assistant", "Sorry — I couldn't expand that option yet. Please try again.");
+    console.error(error);
+  }
 }
 
 form.addEventListener("submit", async (event) => {
@@ -58,8 +163,7 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({ sessionId, message })
     });
     const data = await response.json();
-    sessionId = data.sessionId;
-    localStorage.setItem("skiPlannerSessionId", sessionId);
+    sessionId = data.sessionId ?? sessionId;
 
     const elapsed = performance.now() - startedAt;
     const baseDelayMs = 700;
@@ -69,7 +173,12 @@ form.addEventListener("submit", async (event) => {
     }
 
     typing.remove();
-    addMessage("assistant", data.reply);
+    if (data.messages) {
+      renderMessages(data.messages);
+    } else {
+      addMessage("assistant", data.reply);
+    }
+    updateState(data);
   } catch (error) {
     typing.remove();
     addMessage("assistant", "Sorry — something went wrong. Please try again.");

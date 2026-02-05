@@ -3,6 +3,7 @@ import { TripSpec, createEmptyTripSpec } from "../core/tripSpec";
 import { runChatGraph } from "../graph/chatGraph";
 import { getLLMClient } from "../llm/factory";
 import { ChatMessage } from "../llm/types";
+import { WELCOME_MESSAGE } from "./welcome";
 
 export type ChatTurn = {
   role: "user" | "assistant";
@@ -24,8 +25,7 @@ export function createSession(): ChatSession {
     history: [
       {
         role: "assistant",
-        content:
-          "Welcome to Apres AI. Tell me about your ski trip — dates (or date window), group size + skill levels, budget, travel restrictions, and whether you need gear rentals."
+        content: WELCOME_MESSAGE
       }
     ]
   };

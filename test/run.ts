@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 
 process.env.LLM_PROVIDER = "stub";
+process.env.PERSISTENCE_DRIVER = "memory";
 
 async function run() {
   const { buildItineraries } = await import("../src/core/itinerary");
@@ -101,6 +102,7 @@ async function testApi(deps: any) {
   assert.equal(sessionRes.status, 200);
   const sessionId = sessionRes.body.sessionId as string;
   assert.ok(sessionId);
+  assert.ok(Array.isArray(sessionRes.body.messages));
 
   const chatRes = await request(app)
     .post("/api/chat")

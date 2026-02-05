@@ -4,6 +4,7 @@ import { TripSpec, TripSpecPatch, mergeTripSpec, updateTripSpecStatus } from "..
 import { LLMClient } from "../llm/client";
 import { ChatMessage } from "../llm/types";
 import { resolveDatesPatch } from "../tools/dateResolution";
+import { buildCarRentalNote } from "../core/carRental";
 
 type GraphState = {
   tripSpec: TripSpec;
@@ -259,11 +260,11 @@ function buildDecisionSummary(spec: TripSpec, decision: DecisionPackage): string
   const itineraryLines = decision.itineraries
     .map((itinerary) => `- ${itinerary.title}: ${itinerary.summary}`)
     .join("\n");
-  const sheetLine = decision.sheet?.sheetUrl
-    ? `Google Sheet draft: ${decision.sheet.sheetUrl}`
-    : "Google Sheet draft ready to generate.";
   const poiLine = buildPoiSummary(decision);
-  return `I’ve got enough to build itineraries for ${group} on ${dates}.\n${resortLine}\n\nHere are 2–3 options:\n${itineraryLines}\n\n${poiLine}\n${sheetLine}`;
+  const exportLine = "Use the “Export to Google Sheets” button when you’re ready for a shareable plan.";
+  const rentalLine = buildCarRentalNote(spec);
+  const extras = [poiLine, rentalLine, exportLine].filter(Boolean).join("\n");
+  return `I’ve got enough to build itineraries for ${group} on ${dates}.\n${resortLine}\n\nHere are 2–3 options:\n${itineraryLines}\n\n${extras}`;
 }
 
 function buildPoiSummary(decision: DecisionPackage): string {
