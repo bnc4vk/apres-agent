@@ -13,6 +13,7 @@ async function run() {
   const { resolveDatesPatch } = await import("../src/tools/dateResolution");
 
   testMissingFields({ createEmptyTripSpec, determineMissingFields, mergeTripSpec });
+  testGearAutoConfirm({ createEmptyTripSpec, mergeTripSpec, determineMissingFields });
   testDateResolution({ resolveDatesPatch });
   testResortShortlist({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
   testItineraryBuilder({ createEmptyTripSpec, mergeTripSpec, buildItineraries });
@@ -34,6 +35,21 @@ function testMissingFields(deps: any) {
   });
   const missing = determineMissingFields(updated);
   assert.ok(missing.includes("traveler_pods"));
+}
+
+function testGearAutoConfirm(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec, determineMissingFields } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    dates: { start: "2026-03-21", end: "2026-03-24" },
+    group: { size: 6, skillLevels: ["beginner", "intermediate"] },
+    budget: { perPersonMax: 650, confirmed: true },
+    travel: { noFlying: true, maxDriveHours: 4, confirmed: true },
+    location: { region: "Tahoe", confirmed: true },
+    travelers: { pods: [{ origin: "SF", count: 3 }, { origin: "Sacramento", count: 3 }] },
+    gear: { rentalCount: 4 }
+  });
+  const missing = determineMissingFields(spec);
+  assert.ok(!missing.includes("gear_rental"));
 }
 
 function testResortShortlist(deps: any) {

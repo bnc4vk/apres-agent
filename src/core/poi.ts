@@ -43,12 +43,28 @@ export async function fetchNearbyPOIs(locationHint: string): Promise<POIResults>
   const [gearShops, groceries, restaurants] = await Promise.all([
     fetchPlaces(resort, "gear", "ski rental"),
     fetchPlaces(resort, "grocery", "grocery store"),
-    fetchPlaces(resort, "restaurant", "restaurant")
+    fetchDiverseTakeoutRestaurants(resort)
   ]);
 
   const result = { gearShops, groceries, restaurants };
   CACHE.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, data: result });
   return result;
+}
+
+async function fetchDiverseTakeoutRestaurants(
+  resort: { lat: number; lng: number }
+): Promise<POI[]> {
+  const categories = ["takeout pizza", "takeout asian food", "takeout mexican food"];
+  const lists = await Promise.all(categories.map((category) => fetchPlaces(resort, "restaurant", category)));
+  const deduped = new Map<string, POI>();
+  for (const list of lists) {
+    for (const item of list) {
+      if (!deduped.has(item.name)) {
+        deduped.set(item.name, item);
+      }
+    }
+  }
+  return [...deduped.values()].slice(0, 5);
 }
 
 async function fetchPlaces(

@@ -104,7 +104,7 @@ export const TripSpecPatchSchema = z
 
 export function createEmptyTripSpec(): TripSpec {
   const now = new Date().toISOString();
-  return {
+  const spec: TripSpec = {
     id: nanoid(),
     createdAt: now,
     updatedAt: now,
@@ -121,6 +121,7 @@ export function createEmptyTripSpec(): TripSpec {
       missingFields: []
     }
   };
+  return updateTripSpecStatus(spec);
 }
 
 export function mergeTripSpec(spec: TripSpec, patch: TripSpecPatch): TripSpec {
@@ -171,7 +172,7 @@ export function determineMissingFields(spec: TripSpec): string[] {
   if (!spec.group.skillLevels || spec.group.skillLevels.length === 0) {
     missing.push("skill_levels");
   }
-  if (!spec.gear.confirmed) {
+  if (!isGearResolved(spec.gear)) {
     missing.push("gear_rental");
   }
   if (!spec.budget.confirmed) {
@@ -188,6 +189,15 @@ export function determineMissingFields(spec: TripSpec): string[] {
   }
 
   return missing;
+}
+
+function isGearResolved(gear: TripSpec["gear"]): boolean {
+  if (gear.confirmed) return true;
+  if (gear.rentalRequired !== undefined) return true;
+  if (typeof gear.rentalCount === "number") return true;
+  if (typeof gear.rentalShare === "number") return true;
+  if (Boolean(gear.rentalNotes)) return true;
+  return false;
 }
 
 function isResolvedDateRange(start?: string, end?: string): boolean {

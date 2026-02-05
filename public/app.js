@@ -8,7 +8,8 @@ let inFlight = false;
 const state = {
   decisionPackage: null,
   sheetUrl: null,
-  googleLinked: false
+  googleLinked: false,
+  tripSpec: null
 };
 
 async function init() {
@@ -51,11 +52,14 @@ function updateState(data) {
   state.decisionPackage = data.decisionPackage ?? null;
   state.sheetUrl = data.sheetUrl ?? null;
   state.googleLinked = Boolean(data.googleLinked);
+  state.tripSpec = data.tripSpec ?? state.tripSpec;
   renderActions();
 }
 
 function renderActions() {
   actions.innerHTML = "";
+  const checklist = renderChecklist();
+  if (checklist) actions.appendChild(checklist);
   if (!state.decisionPackage) return;
 
   const heading = document.createElement("h2");
@@ -71,10 +75,15 @@ function renderActions() {
     title.textContent = itinerary.title;
     const summary = document.createElement("p");
     summary.textContent = itinerary.summary;
+    const budget = document.createElement("p");
+    budget.textContent = itinerary.lodgingBudgetPerPerson
+      ? `Lodging target: ~$${itinerary.lodgingBudgetPerPerson} per person`
+      : "Lodging target: flexible";
+    const links = renderLinkRow(itinerary.researchLinks);
     const button = document.createElement("button");
     button.textContent = "Expand option";
     button.addEventListener("click", () => expandItinerary(itinerary.id));
-    card.append(title, summary, button);
+    card.append(title, summary, budget, links, button);
     grid.appendChild(card);
   });
   actions.appendChild(grid);
@@ -95,6 +104,55 @@ function renderActions() {
     exportWrap.appendChild(button);
   }
   actions.appendChild(exportWrap);
+}
+
+function renderChecklist() {
+  const missing = state.tripSpec?.status?.missingFields ?? [];
+  if (!Array.isArray(missing) || missing.length === 0) return null;
+  const box = document.createElement("div");
+  box.className = "progress-box";
+  const title = document.createElement("h2");
+  title.textContent = "Missing info to build itinerary";
+  const list = document.createElement("p");
+  list.textContent = missing.map(labelForField).join(" • ");
+  box.append(title, list);
+  return box;
+}
+
+function labelForField(field) {
+  const labels = {
+    dates: "Dates",
+    group_size: "Group size",
+    skill_levels: "Skill levels",
+    gear_rental: "Gear rentals",
+    budget: "Budget",
+    travel_restrictions: "Travel restrictions",
+    location_input: "Location preference",
+    traveler_pods: "Departure locations"
+  };
+  return labels[field] ?? field;
+}
+
+function renderLinkRow(researchLinks) {
+  const wrap = document.createElement("div");
+  wrap.className = "link-row";
+  if (!researchLinks) return wrap;
+  const entries = [
+    { label: "Lodging", href: researchLinks.lodgingSearch },
+    { label: "Gear", href: researchLinks.gearSearch },
+    { label: "Grocery", href: researchLinks.grocerySearch },
+    { label: "Takeout", href: researchLinks.takeoutSearch },
+    { label: "Cars", href: researchLinks.carRentalCompare }
+  ].filter((entry) => Boolean(entry.href));
+  entries.forEach((entry) => {
+    const link = document.createElement("a");
+    link.href = entry.href;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = entry.label;
+    wrap.appendChild(link);
+  });
+  return wrap;
 }
 
 async function exportToSheets() {

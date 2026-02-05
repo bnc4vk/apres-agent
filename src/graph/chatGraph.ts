@@ -107,20 +107,7 @@ export function buildChatGraph(llm: LLMClient) {
     })
     .addNode("followup", async (state: GraphState) => {
       const missingFields = state.tripSpec.status.missingFields;
-      const { acknowledgement, question, askedFields } = await llm.generateFollowupQuestion({
-        tripSpec: state.tripSpec,
-        messages: state.messages,
-        missingFields
-      });
-      const allowedFields = askedFields.filter((field) => missingFields.includes(field));
-      const questionMentionsOrigins = /traveling from|travelling from|departure locations|departing from|where will everyone be traveling from/i.test(
-        question
-      );
-      const needsOrigins = missingFields.includes("traveler_pods");
-      const shouldFallback = allowedFields.length === 0 || (questionMentionsOrigins && !needsOrigins);
-      const assistantMessage = shouldFallback
-        ? defaultQuestion(missingFields)
-        : `${acknowledgement}\n\n${question}`;
+      const assistantMessage = defaultQuestion(missingFields);
       return {
         messages: [{ role: "assistant", content: assistantMessage }],
         assistantMessage
@@ -193,7 +180,15 @@ function detectIssue(spec: TripSpec): string | null {
 function autoConfirm(spec: TripSpec): TripSpec {
   const updated = { ...spec };
 
-  if (updated.gear.rentalRequired !== undefined && updated.gear.confirmed !== true) {
+  const gearProvided =
+    updated.gear.rentalRequired !== undefined ||
+    typeof updated.gear.rentalCount === "number" ||
+    typeof updated.gear.rentalShare === "number" ||
+    Boolean(updated.gear.rentalNotes);
+  if (typeof updated.gear.rentalCount === "number" && updated.gear.rentalRequired === undefined) {
+    updated.gear = { ...updated.gear, rentalRequired: updated.gear.rentalCount > 0 };
+  }
+  if (gearProvided && updated.gear.confirmed !== true) {
     updated.gear = { ...updated.gear, confirmed: true };
   }
 
@@ -258,12 +253,21 @@ function buildDecisionSummary(spec: TripSpec, decision: DecisionPackage): string
       ? `Top resort matches: ${decision.resortShortlist.join(", ")}.`
       : "No resort matches found in the current dataset.";
   const itineraryLines = decision.itineraries
-    .map((itinerary) => `- ${itinerary.title}: ${itinerary.summary}`)
+    .map((itinerary) => {
+      const budget = itinerary.lodgingBudgetPerPerson
+        ? `Lodging target: ~$${itinerary.lodgingBudgetPerPerson} pp.`
+        : "Lodging budget: flexible.";
+      return `- ${itinerary.title}: ${itinerary.summary} ${budget}`;
+    })
     .join("\n");
   const poiLine = buildPoiSummary(decision);
   const exportLine = "Use the “Export to Google Sheets” button when you’re ready for a shareable plan.";
   const rentalLine = buildCarRentalNote(spec);
-  const extras = [poiLine, rentalLine, exportLine].filter(Boolean).join("\n");
+  const first = decision.itineraries[0];
+  const linkLine = first
+    ? `Planning links: Lodging ${first.researchLinks.lodgingSearch} | Gear ${first.researchLinks.gearSearch} | Grocery ${first.researchLinks.grocerySearch} | Takeout ${first.researchLinks.takeoutSearch}`
+    : null;
+  const extras = [poiLine, rentalLine, linkLine, exportLine].filter(Boolean).join("\n");
   return `I’ve got enough to build itineraries for ${group} on ${dates}.\n${resortLine}\n\nHere are 2–3 options:\n${itineraryLines}\n\n${extras}`;
 }
 

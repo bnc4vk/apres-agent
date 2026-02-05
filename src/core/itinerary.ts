@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import { shortlistResorts } from "./resorts";
 import { scoreResortForTrip } from "./snow";
 import { TripSpec } from "./tripSpec";
+import { buildResearchLinks, ResearchLinks } from "./researchLinks";
 
 export type Itinerary = {
   id: string;
@@ -17,6 +18,8 @@ export type Itinerary = {
   logistics: string[];
   warnings: string[];
   snowAssessment: string;
+  lodgingBudgetPerPerson: number | null;
+  researchLinks: ResearchLinks;
 };
 
 export type ItineraryPlan = {
@@ -45,7 +48,9 @@ export function buildItineraries(spec: TripSpec): ItineraryPlan {
       summary: buildSummary(spec, resort.name, lodgingArea, dateChoice),
       logistics: buildLogistics(spec, resort.name),
       warnings,
-      snowAssessment
+      snowAssessment,
+      lodgingBudgetPerPerson: estimateLodgingBudgetPerPerson(spec),
+      researchLinks: buildResearchLinks(spec, resort.name)
     };
   });
 
@@ -70,7 +75,8 @@ function buildSummary(
 ): string {
   const dates = dateChoice?.label ?? formatDateRange(spec.dates.start, spec.dates.end);
   const group = spec.group.size ? `${spec.group.size} people` : "your group";
-  return `A ${dates} trip for ${group} at ${resortName} with lodging in ${lodgingArea}.`;
+  const budgetNote = budgetLine(spec);
+  return `A ${dates} trip for ${group} at ${resortName} with lodging in ${lodgingArea}. ${budgetNote}`;
 }
 
 function buildLogistics(spec: TripSpec, resortName: string): string[] {
@@ -118,6 +124,22 @@ function buildSnowAssessment(score: { snowOk: boolean; avgTempOk: boolean; month
     return `${monthName} falls short on historical snowfall threshold.`;
   }
   return `${monthName} exceeds temperature threshold; snow quality may vary.`;
+}
+
+function estimateLodgingBudgetPerPerson(spec: TripSpec): number | null {
+  if (spec.budget.perPersonMax) return Math.round(spec.budget.perPersonMax);
+  const byBand = {
+    low: 300,
+    mid: 650,
+    high: 1200
+  };
+  return spec.budget.band ? byBand[spec.budget.band] : null;
+}
+
+function budgetLine(spec: TripSpec): string {
+  const perPerson = estimateLodgingBudgetPerPerson(spec);
+  if (!perPerson) return "Lodging budget is still flexible.";
+  return `Target lodging budget is about $${perPerson} per person total.`;
 }
 
 function formatDateRange(start?: string, end?: string): string {

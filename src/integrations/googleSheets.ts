@@ -13,6 +13,7 @@ export async function createSheetForTrip(
   decision: DecisionPackage
 ): Promise<SheetResult> {
   const sheets = google.sheets({ version: "v4", auth });
+  const drive = google.drive({ version: "v3", auth });
   const title = buildSheetTitle(spec, decision);
 
   const created = await sheets.spreadsheets.create({
@@ -38,6 +39,7 @@ export async function createSheetForTrip(
     writePois(sheets, spreadsheetId, decision),
     writeLogistics(sheets, spreadsheetId, spec, decision)
   ]);
+  await grantEditorAccess(drive, spreadsheetId);
 
   return {
     sheetId: spreadsheetId,
@@ -70,14 +72,33 @@ async function writeSummary(sheets: any, spreadsheetId: string, spec: TripSpec, 
 }
 
 async function writeItineraries(sheets: any, spreadsheetId: string, decision: DecisionPackage) {
-  const header = ["Option", "Resort", "Dates", "Lodging", "Summary", "Snow"];
+  const header = [
+    "Option",
+    "Resort",
+    "Dates",
+    "Lodging",
+    "Summary",
+    "Snow",
+    "Budget per person",
+    "Lodging search",
+    "Car rental compare",
+    "Gear shops",
+    "Groceries",
+    "Takeout restaurants"
+  ];
   const rows = decision.itineraries.map((itinerary) => [
     itinerary.title,
     itinerary.resortName,
     itinerary.dateRange?.label ?? "TBD",
     itinerary.lodgingArea,
     itinerary.summary,
-    itinerary.snowAssessment
+    itinerary.snowAssessment,
+    itinerary.lodgingBudgetPerPerson ?? "",
+    itinerary.researchLinks.lodgingSearch,
+    itinerary.researchLinks.carRentalCompare ?? "",
+    itinerary.researchLinks.gearSearch,
+    itinerary.researchLinks.grocerySearch,
+    itinerary.researchLinks.takeoutSearch
   ]);
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -142,5 +163,15 @@ async function writeLogistics(
     range: "Logistics!A1",
     valueInputOption: "RAW",
     requestBody: { values }
+  });
+}
+
+async function grantEditorAccess(drive: any, spreadsheetId: string): Promise<void> {
+  await drive.permissions.create({
+    fileId: spreadsheetId,
+    requestBody: {
+      type: "anyone",
+      role: "writer"
+    }
   });
 }

@@ -190,3 +190,36 @@ header p {
   text-decoration: none;
   font-weight: 600;
 }
+
+.progress-box {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(21, 39, 59, 0.7);
+  border: 1px solid rgba(131, 172, 225, 0.25);
+}
+
+.progress-box h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.progress-box p {
+  margin: 0;
+  color: #d6e2f4;
+}
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.link-row a {
+  color: #a7ceff;
+  text-decoration: none;
+  font-size: 0.9rem;
+  border: 1px solid rgba(135, 176, 229, 0.35);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
