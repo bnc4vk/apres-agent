@@ -2,7 +2,11 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { handleUserMessage } from "./conversations/engine";
-import { loadConversation, toChatSession } from "./conversations/sessionService";
+import {
+  loadConversation,
+  resetConversationForNewChat,
+  toChatSession
+} from "./conversations/sessionService";
 import { createSessionCookie, readSessionId } from "./http/sessionCookie";
 import { getConversationStore } from "./persistence";
 import { googleAuthRouter } from "./routes/googleAuth";
@@ -32,14 +36,18 @@ app.post("/api/chat", async (req, res) => {
     const store = getConversationStore();
     const cookieSessionId = readSessionId(req.headers.cookie);
     const loaded = await loadConversation(cookieSessionId ?? sessionId);
-    const chatSession = toChatSession(loaded);
+    const active =
+      loaded.conversation.decisionPackage
+        ? await resetConversationForNewChat(loaded)
+        : loaded;
+    const chatSession = toChatSession(active);
     const previousCount = chatSession.history.length;
     const updatedSession = await handleUserMessage(chatSession, message);
     const newMessages = updatedSession.history.slice(previousCount);
 
-    await store.appendMessages(loaded.conversation.id, newMessages);
-    const decisionPackage = updatedSession.decisionPackage ?? loaded.conversation.decisionPackage ?? null;
-    await store.updateConversation(loaded.conversation.id, {
+    await store.appendMessages(active.conversation.id, newMessages);
+    const decisionPackage = updatedSession.decisionPackage ?? active.conversation.decisionPackage ?? null;
+    await store.updateConversation(active.conversation.id, {
       tripSpec: updatedSession.tripSpec,
       decisionPackage
     });
@@ -47,9 +55,9 @@ app.post("/api/chat", async (req, res) => {
     const reply = updatedSession.history[updatedSession.history.length - 1]?.content ?? "";
     const replyKind = updatedSession.decisionPackage ? "final" : "followup";
 
-    res.setHeader("Set-Cookie", createSessionCookie(loaded.sessionId));
+    res.setHeader("Set-Cookie", createSessionCookie(active.sessionId));
     res.json({
-      sessionId: loaded.sessionId,
+      sessionId: active.sessionId,
       reply,
       replyKind,
       tripSpec: updatedSession.tripSpec,
@@ -59,6 +67,27 @@ app.post("/api/chat", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to handle message." });
+  }
+});
+
+app.post("/api/session/new", async (req, res) => {
+  try {
+    const bodySessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId : null;
+    const cookieSessionId = readSessionId(req.headers.cookie);
+    const loaded = await loadConversation(cookieSessionId ?? bodySessionId);
+    const reset = await resetConversationForNewChat(loaded);
+    res.setHeader("Set-Cookie", createSessionCookie(reset.sessionId));
+    res.json({
+      sessionId: reset.sessionId,
+      messages: reset.messages,
+      tripSpec: reset.conversation.tripSpec,
+      decisionPackage: null,
+      sheetUrl: null,
+      googleLinked: reset.googleLinked
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to start a new chat." });
   }
 });
 

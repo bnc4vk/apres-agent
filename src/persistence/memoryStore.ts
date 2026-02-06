@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { createEmptyTripSpec } from "../core/tripSpec";
+import { createEmptyTripSpec, TripSpec } from "../core/tripSpec";
 import { ConversationStore, StoredConversation, StoredSession } from "./store";
 import { ChatTurn } from "../conversations/engine";
 
@@ -49,6 +49,18 @@ export class MemoryConversationStore implements ConversationStore {
   async appendMessages(conversationId: string, messages: ChatTurn[]): Promise<void> {
     const existing = this.messages.get(conversationId) ?? [];
     this.messages.set(conversationId, [...existing, ...messages]);
+  }
+
+  async resetConversation(conversationId: string, tripSpec: TripSpec, messages: ChatTurn[]): Promise<void> {
+    const existing = this.conversations.get(conversationId);
+    if (!existing) return;
+    this.conversations.set(conversationId, {
+      ...existing,
+      tripSpec,
+      decisionPackage: null,
+      sheetUrl: null
+    });
+    this.messages.set(conversationId, [...messages]);
   }
 
   async updateConversation(

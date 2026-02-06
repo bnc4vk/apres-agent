@@ -29,6 +29,7 @@ export type ConversationStore = {
   getOrCreateConversation(sessionPk: string): Promise<StoredConversation>;
   listMessages(conversationId: string): Promise<ChatTurn[]>;
   appendMessages(conversationId: string, messages: ChatTurn[]): Promise<void>;
+  resetConversation(conversationId: string, tripSpec: TripSpec, messages: ChatTurn[]): Promise<void>;
   updateConversation(
     conversationId: string,
     patch: Partial<Pick<StoredConversation, "tripSpec" | "decisionPackage" | "sheetUrl">>

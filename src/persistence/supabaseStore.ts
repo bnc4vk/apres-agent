@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { supabaseAdmin } from "./supabaseClient";
 import { ConversationStore, StoredConversation, StoredSession } from "./store";
 import { ChatTurn } from "../conversations/engine";
-import { createEmptyTripSpec } from "../core/tripSpec";
+import { createEmptyTripSpec, TripSpec } from "../core/tripSpec";
 
 type SessionRow = {
   id: string;
@@ -123,6 +123,30 @@ export class SupabaseConversationStore implements ConversationStore {
     if (response.error) {
       throw new Error(response.error.message);
     }
+  }
+
+  async resetConversation(conversationId: string, tripSpec: TripSpec, messages: ChatTurn[]): Promise<void> {
+    const resetResponse = await supabaseAdmin
+      .from("app_conversations")
+      .update({
+        trip_spec: tripSpec,
+        decision_package: null,
+        sheet_url: null
+      })
+      .eq("id", conversationId);
+    if (resetResponse.error) {
+      throw new Error(resetResponse.error.message);
+    }
+
+    const deleteResponse = await supabaseAdmin
+      .from("app_messages")
+      .delete()
+      .eq("conversation_id", conversationId);
+    if (deleteResponse.error) {
+      throw new Error(deleteResponse.error.message);
+    }
+
+    await this.appendMessages(conversationId, messages);
   }
 
   async updateConversation(

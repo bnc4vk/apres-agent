@@ -2,6 +2,7 @@ const chat = document.getElementById("chat");
 const actions = document.getElementById("actions");
 const form = document.getElementById("chat-form");
 const input = document.getElementById("chat-input");
+const newChatBtn = document.getElementById("new-chat-btn");
 
 let sessionId = null;
 let inFlight = false;
@@ -46,6 +47,7 @@ function addTypingIndicator() {
 function setFormEnabled(enabled) {
   input.disabled = !enabled;
   form.querySelector("button").disabled = !enabled;
+  if (newChatBtn) newChatBtn.disabled = !enabled;
 }
 
 function updateState(data) {
@@ -201,6 +203,31 @@ async function expandItinerary(itineraryId) {
   }
 }
 
+async function startNewChat() {
+  if (inFlight) return;
+  inFlight = true;
+  setFormEnabled(false);
+  try {
+    const response = await fetch("/api/session/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to start new chat.");
+    sessionId = data.sessionId ?? sessionId;
+    renderMessages(data.messages ?? []);
+    updateState(data);
+  } catch (error) {
+    addMessage("assistant", "Sorry — couldn't start a new chat right now.");
+    console.error(error);
+  } finally {
+    inFlight = false;
+    setFormEnabled(true);
+    input.focus();
+  }
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (inFlight) return;
@@ -247,5 +274,9 @@ form.addEventListener("submit", async (event) => {
     input.focus();
   }
 });
+
+if (newChatBtn) {
+  newChatBtn.addEventListener("click", startNewChat);
+}
 
 init();

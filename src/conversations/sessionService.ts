@@ -2,6 +2,7 @@ import { ChatSession } from "./engine";
 import { getConversationStore } from "../persistence";
 import { WELCOME_MESSAGE } from "./welcome";
 import { ConversationSnapshot } from "../persistence/store";
+import { createEmptyTripSpec } from "../core/tripSpec";
 
 export type LoadedConversation = ConversationSnapshot & {
   sessionId: string;
@@ -36,5 +37,24 @@ export function toChatSession(conversation: LoadedConversation): ChatSession {
     tripSpec: conversation.conversation.tripSpec,
     history: conversation.messages,
     decisionPackage: conversation.conversation.decisionPackage ?? undefined
+  };
+}
+
+export async function resetConversationForNewChat(
+  loaded: LoadedConversation
+): Promise<LoadedConversation> {
+  const store = getConversationStore();
+  const freshSpec = createEmptyTripSpec();
+  const welcome = [{ role: "assistant" as const, content: WELCOME_MESSAGE }];
+  await store.resetConversation(loaded.conversation.id, freshSpec, welcome);
+  return {
+    ...loaded,
+    conversation: {
+      ...loaded.conversation,
+      tripSpec: freshSpec,
+      decisionPackage: null,
+      sheetUrl: null
+    },
+    messages: welcome
   };
 }

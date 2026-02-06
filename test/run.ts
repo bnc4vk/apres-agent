@@ -126,6 +126,32 @@ async function testApi(deps: any) {
   assert.equal(chatRes.status, 200);
   assert.ok(String(chatRes.body.reply).toLowerCase().includes("departure locations"));
   assert.equal(chatRes.body.replyKind, "followup");
+
+  const finalRes = await request(app)
+    .post("/api/chat")
+    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
+    .send({ sessionId, message: "3 from SF, 1 from Sacramento" });
+  assert.equal(finalRes.status, 200);
+  assert.equal(finalRes.body.replyKind, "final");
+
+  const resetRes = await request(app)
+    .post("/api/chat")
+    .set("Cookie", finalRes.headers["set-cookie"] ?? [])
+    .send({ sessionId, message: "We are 4 people, beginners. Feb 20-23, need rentals, mid budget, no flying, max 4 hours driving. Open to suggestions." });
+  assert.equal(resetRes.status, 200);
+  assert.equal(resetRes.body.replyKind, "followup");
+  assert.ok(Array.isArray(resetRes.body.messages));
+  assert.equal(resetRes.body.messages.length, 3);
+  assert.ok(String(resetRes.body.reply).toLowerCase().includes("departure locations"));
+
+  const newChatRes = await request(app)
+    .post("/api/session/new")
+    .set("Cookie", resetRes.headers["set-cookie"] ?? [])
+    .send({ sessionId });
+  assert.equal(newChatRes.status, 200);
+  assert.ok(Array.isArray(newChatRes.body.messages));
+  assert.equal(newChatRes.body.messages.length, 1);
+  assert.equal(newChatRes.body.decisionPackage, null);
 }
 
 run().catch((error) => {
