@@ -7,19 +7,6 @@ export type SpecPatchInput = {
   lastUserMessage: string;
 };
 
-export type FollowupQuestionInput = {
-  tripSpec: TripSpec;
-  messages: ChatMessage[];
-  missingFields: string[];
-};
-
-export type FollowupQuestionOutput = {
-  acknowledgement: string;
-  question: string;
-  askedFields: string[];
-};
-
 export type LLMClient = {
   generateTripSpecPatch(input: SpecPatchInput): Promise<TripSpecPatch>;
-  generateFollowupQuestion(input: FollowupQuestionInput): Promise<FollowupQuestionOutput>;
 };

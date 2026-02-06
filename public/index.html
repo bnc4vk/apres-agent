@@ -9,21 +9,31 @@
   <body>
     <div class="app">
       <header>
-        <h1>Apres AI</h1>
-        <p>Ski trip planning, streamlined.</p>
-        <button id="new-chat-btn" type="button" class="secondary-btn">Start New Chat</button>
+        <div class="brand-row">
+          <h1>Apres AI</h1>
+          <button id="new-chat-btn" type="button" class="secondary-btn">New trip</button>
+        </div>
+        <p id="page-subhead">Share what you know. I can make assumptions when details are sparse.</p>
       </header>
+
       <main>
-        <section id="chat" class="chat"></section>
-        <section id="actions" class="actions"></section>
+        <section id="chat" class="chat" aria-label="Conversation"></section>
+        <section id="actions" class="actions" aria-label="Itinerary actions"></section>
       </main>
+
       <footer>
         <form id="chat-form" class="chat-form">
-          <input id="chat-input" type="text" placeholder="Describe your trip..." autocomplete="off" />
+          <input
+            id="chat-input"
+            type="text"
+            placeholder="Share trip details..."
+            autocomplete="off"
+            aria-label="Trip planning message"
+          />
           <button type="submit">Send</button>
         </form>
       </footer>
     </div>
-    <script src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

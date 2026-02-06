@@ -60,6 +60,13 @@ async function writeSummary(sheets: any, spreadsheetId: string, spec: TripSpec, 
     ["Group Size", spec.group.size ? String(spec.group.size) : "TBD"],
     ["Skill Levels", spec.group.skillLevels?.join(", ") ?? "TBD"],
     ["Budget", spec.budget.band ?? "TBD"],
+    ["Budget Check", decision.budgetSummary.summaryLine ?? "TBD"],
+    [
+      "Passes",
+      spec.notes.passes
+        ? `Ikon ${spec.notes.passes.ikonCount ?? 0}, Epic ${spec.notes.passes.epicCount ?? 0}, Indy ${spec.notes.passes.indyCount ?? 0}, No pass ${spec.notes.passes.noPassCount ?? 0}`
+        : "TBD"
+    ],
     ["Travel", spec.travel.noFlying ? "No flying" : "Flying OK"],
     ["Top Resort Matches", decision.resortShortlist.join(", ") || "TBD"]
   ];
@@ -80,6 +87,13 @@ async function writeItineraries(sheets: any, spreadsheetId: string, decision: De
     "Summary",
     "Snow",
     "Budget per person",
+    "Total est. per person",
+    "Budget feasible",
+    "Pass",
+    "Travel",
+    "Food",
+    "Gear",
+    "Housing",
     "Lodging search",
     "Car rental compare",
     "Gear shops",
@@ -94,6 +108,13 @@ async function writeItineraries(sheets: any, spreadsheetId: string, decision: De
     itinerary.summary,
     itinerary.snowAssessment,
     itinerary.lodgingBudgetPerPerson ?? "",
+    itinerary.budgetEstimate.perPersonTotal ?? "",
+    itinerary.budgetEstimate.feasible === null ? "" : itinerary.budgetEstimate.feasible ? "Yes" : "No",
+    itinerary.budgetEstimate.components.pass ?? "",
+    itinerary.budgetEstimate.components.travel ?? "",
+    itinerary.budgetEstimate.components.food ?? "",
+    itinerary.budgetEstimate.components.gear_rental ?? "",
+    itinerary.budgetEstimate.components.housing ?? "",
     itinerary.researchLinks.lodgingSearch,
     itinerary.researchLinks.carRentalCompare ?? "",
     itinerary.researchLinks.gearSearch,

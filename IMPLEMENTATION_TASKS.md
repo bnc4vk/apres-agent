@@ -1,36 +1,69 @@
 # Implementation Task List
 
-## Milestone 1 — Supabase persistence + session cookie
-- [x] Add persistence modules (Supabase + memory).
-- [x] Add signed session cookie utility.
-- [x] Add app config module for envs.
-- [x] Bugs found in milestone 1 testing (none).
+## Milestone A — Test-first guardrails for refactor
+- [x] Added regression tests for:
+  - [x] pass ownership missing-field gating,
+  - [x] assumption-offer + proceed flow,
+  - [x] final-summary URL cleanliness,
+  - [x] OAuth blocked callback redirect behavior.
+- [x] `npm test` passed before structural refactor.
 
-## Milestone 2 — API uses persistence
-- [x] Replace in-memory sessions with Supabase store.
-- [x] `GET /api/session` returns prior conversation state.
-- [x] `POST /api/chat` persists messages + TripSpec.
-- [x] Bugs found in milestone 2 testing (none).
+## Milestone B — Dead code and cycle cleanup
+- [x] Removed unused legacy modules:
+  - [x] `src/conversations/sessions.ts`
+  - [x] `src/core/validators.ts`
+  - [x] `src/core/sheets.ts`
+- [x] Removed unused interfaces/methods:
+  - [x] follow-up LLM interface + impl code not used by runtime graph.
+  - [x] unused `mistralSmallModel` export.
+  - [x] unused `assertGooglePlacesConfig` export.
+  - [x] unused `clearSessionCookie` helper.
+- [x] Broke circular dependency:
+  - [x] moved shortlist/ranking from `resorts.ts` to `resortRanking.ts`.
+- [x] Validation:
+  - [x] `npm test`
+  - [x] `npm run build`
+  - [x] `npx madge --extensions ts --circular src` (no cycles)
 
-## Milestone 3 — UI renders history + actions
-- [x] Load and render message history on init.
-- [x] Add export-to-sheets CTA when ready.
-- [x] Add expand option CTA (post-itinerary).
-- [x] Bugs found in milestone 3 testing (none).
+## Milestone C — Domain decomposition (soft file length bound)
+- [x] Split budget graph into focused modules:
+  - [x] `src/core/budget/index.ts`
+  - [x] `src/core/budget/estimators.ts`
+  - [x] `src/core/budget/origins.ts`
+  - [x] `src/core/budget/types.ts`
+- [x] Kept compatibility export file: `src/core/budgetGraph.ts`.
+- [x] Split chat graph into focused modules:
+  - [x] `src/graph/chat/index.ts`
+  - [x] `src/graph/chat/assumptions.ts`
+  - [x] `src/graph/chat/messaging.ts`
+  - [x] `src/graph/chat/spec.ts`
+- [x] Kept compatibility export file: `src/graph/chatGraph.ts`.
 
-## Milestone 4 — Google OAuth + Sheets export
-- [x] OAuth start + callback endpoints.
-- [x] Store encrypted refresh tokens.
-- [x] Export endpoint creates + populates sheet.
-- [x] Bugs found in milestone 4 testing (fixed: decision package sheet creation crash).
+## Milestone D — Frontend modularization
+- [x] Split monolithic frontend JS:
+  - [x] `public/js/main.js`
+  - [x] `public/js/session.js`
+  - [x] `public/js/renderers.js`
+  - [x] `public/app.js` now bootstrap-only.
+- [x] Split CSS by concern:
+  - [x] `public/css/base.css`
+  - [x] `public/css/layout.css`
+  - [x] `public/css/components.css`
+  - [x] `public/styles.css` now import entrypoint.
+- [x] Updated `index.html` script to module loading.
 
-## Milestone 5 — POI integration + itinerary extras
-- [x] Replace POI stub with Google Places.
-- [x] Update decision summary copy + car rental notes.
-- [x] Add itinerary expansion endpoint.
-- [x] Bugs found in milestone 5 testing (none).
+## Milestone E — Documentation refresh
+- [x] Updated `README.md` with new folder layout and bootstrap guidance.
+- [x] Updated `CONTEXT.md` with current behavior and architecture.
+- [x] Updated `UX_LOOP_NOTES.md` and this task log to reflect refactor work.
 
-## Milestone 6 — Tests + full pass
-- [x] Update tests to use memory persistence.
-- [x] Run test suite.
-- [x] Bugs found in milestone 6 testing (none).
+## Refactor validation summary
+- [x] Tests pass: `npm test`.
+- [x] Build passes: `npm run build`.
+- [x] No TS circular dependencies.
+- [x] Chromium smoke flow passes on refactored frontend.
+
+## Bugs found during this refactor loop
+- [x] Initial cycle between `src/core/resorts.ts` and `src/core/snow.ts` (fixed).
+- [x] Found and removed unused follow-up LLM pathway that looked active by interface but was not used by graph runtime.
+- [x] New follow-up task: continue splitting long backend files still near/over soft limit (`src/llm/mistral.ts`, `src/core/itinerary.ts`, `src/core/tripSpec.ts`).

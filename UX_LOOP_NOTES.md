@@ -1,27 +1,73 @@
 # UX Improvement Loop Notes
 
-## Iteration 1
+## Iteration 4 — Budget realism + companion planning
 
 Issue:
-- Intake often got stuck on `gear_rental` even after users provided rental count.
-- Empty trip state exposed no missing-field checklist, making progression unclear.
-- Final output lacked organizer-centric research links (lodging, groceries, takeout, gear, cars).
-- Exported sheets were not automatically shared with editor access for anyone with the link.
+- Budgeting was disconnected from itinerary output.
+- Pass ownership (Ikon/Epic/etc.) was not first-class in intake gating.
+- Long raw URLs cluttered final assistant messages.
+- Post-final auto-reset interrupted natural refinement behavior.
 
 Fix:
-- Infer `gear.rentalRequired` from `rentalCount` and auto-confirm gear details when rental info is present.
-- Initialize `TripSpec.status.missingFields` from an actual status calculation at session creation.
-- Use deterministic follow-up prompts keyed to missing fields to reduce clunky off-target questions.
-- Add `researchLinks` and lodging budget targets to itinerary options, render links in UI cards.
-- Add a visible "Missing info" checklist block in the UI.
-- Grant `anyone` `writer` permission on generated Google Sheets and include links columns in exported itinerary rows.
+- Added budget graph over pass/travel/food/gear/housing.
+- Added feasibility warnings when constraints are unrealistic.
+- Added pass ownership to `TripSpec` missing-field progression.
+- Removed raw URL dumps from final summary and routed links to itinerary action chips.
+- Switched post-final behavior to refine in same thread.
+- Added soft assumption-offer flow by ~turn 3.
 
-## Iteration 2
+Validation:
+- `npm test` and `npm run build` pass.
+- Chromium flows pass under deterministic test runtime.
+
+## Iteration 5 — Minimalist alpine UI + reduced overhead
 
 Issue:
-- Interface still felt visually dated and did not surface organizer workflow artifacts clearly.
+- Prior UI had high visual weight and unnecessary overhead during planning.
 
 Fix:
-- Modernized layout into a desktop two-column workspace (chat + actions), with responsive mobile fallback.
-- Added stronger typography, card hierarchy, and staged card entrance animations.
-- Kept organizer actions in-panel with direct Lodging/Gear/Grocery/Takeout links per itinerary option.
+- Reworked to light, minimalist alpine styling.
+- Hid `New trip` until itinerary completion.
+- Switched send CTA to `Refine` after final output.
+- Added dynamic input hinting and budget summary card.
+- Kept itinerary link actions compact and scannable.
+
+Validation:
+- Chromium desktop/mobile checks passed.
+
+## Iteration 6 — OAuth blocked-state resilience
+
+Issue:
+- OAuth blocked or denied paths did not provide sufficient in-app guidance.
+
+Fix:
+- Added blocked callback handling and user-facing guidance message.
+- Reduced OAuth scopes to Sheets/Drive-only.
+
+Validation:
+- Chromium blocked-path check passed.
+
+## Iteration 7 — Repo maintainability refactor
+
+Issue:
+- Monolithic files, dead code paths, and import cycle risk were increasing maintenance cost.
+
+Fix:
+- Removed unused modules/helpers/interfaces.
+- Broke one real cycle (`resorts.ts` ↔ `snow.ts`) by extracting `resortRanking.ts`.
+- Split backend graph/domain logic into focused modules:
+  - `src/graph/chat/*`
+  - `src/core/budget/*`
+- Split frontend app and styles into modules:
+  - `public/js/*`
+  - `public/css/*`
+- Added refactor-focused regression tests and revalidated after each stage.
+
+Validation:
+- `npm test` passed at each major refactor stage.
+- `npm run build` passed at each major refactor stage.
+- Cycle scan clean: `npx madge --extensions ts --circular src`.
+- Chromium smoke run passed after frontend decomposition.
+
+Open follow-up:
+- Further split large but still manageable files (`src/llm/mistral.ts`, `src/core/itinerary.ts`, `src/core/tripSpec.ts`) if they continue to grow.

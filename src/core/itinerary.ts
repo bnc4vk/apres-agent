@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { shortlistResorts } from "./resorts";
+import { shortlistResorts } from "./resortRanking";
 import { scoreResortForTrip } from "./snow";
 import { TripSpec } from "./tripSpec";
 import { buildResearchLinks, ResearchLinks } from "./researchLinks";
@@ -19,6 +19,14 @@ export type Itinerary = {
   warnings: string[];
   snowAssessment: string;
   lodgingBudgetPerPerson: number | null;
+  budgetEstimate: {
+    perPersonTotal: number | null;
+    feasible: boolean | null;
+    shortfallPerPerson: number | null;
+    targetPerPerson: number | null;
+    components: Record<"pass" | "travel" | "food" | "gear_rental" | "housing", number>;
+    assumptions: string[];
+  };
   researchLinks: ResearchLinks;
 };
 
@@ -38,6 +46,8 @@ export function buildItineraries(spec: TripSpec): ItineraryPlan {
     const lodgingArea = chooseLodgingArea(spec, index);
     const warnings = buildWarnings(spec, score.snowOk, score.avgTempOk);
     const snowAssessment = buildSnowAssessment(score);
+    const lodgingBudgetPerPerson = estimateLodgingBudgetPerPerson(spec);
+    const nightlyCap = estimateNightlyLodgingCap(lodgingBudgetPerPerson, dateChoice?.start, dateChoice?.end);
 
     return {
       id: `${resort.id}-${index + 1}`,
@@ -49,8 +59,16 @@ export function buildItineraries(spec: TripSpec): ItineraryPlan {
       logistics: buildLogistics(spec, resort.name),
       warnings,
       snowAssessment,
-      lodgingBudgetPerPerson: estimateLodgingBudgetPerPerson(spec),
-      researchLinks: buildResearchLinks(spec, resort.name)
+      lodgingBudgetPerPerson,
+      budgetEstimate: {
+        perPersonTotal: null,
+        feasible: null,
+        shortfallPerPerson: null,
+        targetPerPerson: spec.budget.perPersonMax ?? null,
+        components: { pass: 0, travel: 0, food: 0, gear_rental: 0, housing: lodgingBudgetPerPerson ?? 0 },
+        assumptions: []
+      },
+      researchLinks: buildResearchLinks(spec, resort.name, nightlyCap)
     };
   });
 
@@ -145,6 +163,23 @@ function budgetLine(spec: TripSpec): string {
 function formatDateRange(start?: string, end?: string): string {
   if (!start || !end) return "TBD dates";
   return `${start} to ${end}`;
+}
+
+function estimateNightlyLodgingCap(
+  lodgingBudgetPerPerson: number | null,
+  start?: string,
+  end?: string
+): number | null {
+  if (!lodgingBudgetPerPerson) return null;
+  if (!start || !end) return Math.round(lodgingBudgetPerPerson / 2);
+  const startDate = dayjs(start);
+  const endDate = dayjs(end);
+  if (!startDate.isValid() || !endDate.isValid() || endDate.isBefore(startDate)) {
+    return Math.round(lodgingBudgetPerPerson / 2);
+  }
+
+  const nights = Math.max(1, endDate.diff(startDate, "day"));
+  return Math.max(80, Math.round(lodgingBudgetPerPerson / nights));
 }
 
 function buildDateCandidates(spec: TripSpec, limit: number): Array<{ start: string; end: string; label: string }> {

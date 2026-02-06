@@ -19,6 +19,20 @@ export const TravelerPodSchema = z.object({
 });
 export type TravelerPod = z.infer<typeof TravelerPodSchema>;
 
+export const PassOwnershipSchema = z
+  .object({
+    ikonCount: z.number().int().min(0).optional(),
+    epicCount: z.number().int().min(0).optional(),
+    indyCount: z.number().int().min(0).optional(),
+    mountainCollectiveCount: z.number().int().min(0).optional(),
+    noPassCount: z.number().int().min(0).optional(),
+    otherPasses: z.array(z.string()).optional(),
+    notes: z.string().optional(),
+    confirmed: z.boolean().optional()
+  })
+  .strict();
+export type PassOwnership = z.infer<typeof PassOwnershipSchema>;
+
 export const TripSpecSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -74,10 +88,7 @@ export const TripSpecSchema = z.object({
   }),
   notes: z.object({
     wantsMoreItineraryDetails: z.boolean().optional(),
-    passes: z.object({
-      types: z.array(z.string()).optional(),
-      notes: z.string().optional()
-    }).optional()
+    passes: PassOwnershipSchema.optional()
   }),
   status: z.object({
     readyToGenerate: z.boolean(),
@@ -178,6 +189,9 @@ export function determineMissingFields(spec: TripSpec): string[] {
   if (!spec.budget.confirmed) {
     missing.push("budget");
   }
+  if (!isPassesResolved(spec.notes.passes, spec.group.size)) {
+    missing.push("passes");
+  }
   if (!spec.travel.confirmed) {
     missing.push("travel_restrictions");
   }
@@ -205,4 +219,31 @@ function isResolvedDateRange(start?: string, end?: string): boolean {
   const startDate = dayjs(start);
   const endDate = dayjs(end);
   return startDate.isValid() && endDate.isValid();
+}
+
+function isPassesResolved(passes: PassOwnership | undefined, groupSize: number | undefined): boolean {
+  if (!passes) return false;
+  if (passes.confirmed) return true;
+
+  const holderSum =
+    (passes.ikonCount ?? 0) +
+    (passes.epicCount ?? 0) +
+    (passes.indyCount ?? 0) +
+    (passes.mountainCollectiveCount ?? 0) +
+    (passes.noPassCount ?? 0);
+  if (groupSize && holderSum >= groupSize) return true;
+
+  if (
+    typeof passes.ikonCount === "number" ||
+    typeof passes.epicCount === "number" ||
+    typeof passes.indyCount === "number" ||
+    typeof passes.mountainCollectiveCount === "number" ||
+    typeof passes.noPassCount === "number"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(passes.otherPasses) && passes.otherPasses.length > 0) return true;
+  if (passes.notes) return true;
+  return false;
 }

@@ -29,7 +29,7 @@ const MONTH_RANGE_REGEX = new RegExp(
 );
 
 const MONTH_DAY_REGEX = new RegExp(
-  `\\b(${MONTHS.flatMap((entry) => entry.names).join("|")})\\b\\s*(\\d{1,2})(?:st|nd|rd|th)?`,
+  `\\b(${MONTHS.flatMap((entry) => entry.names).join("|")})\\b\\s*(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?\\b`,
   "i"
 );
 

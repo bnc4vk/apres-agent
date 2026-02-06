@@ -1,11 +1,12 @@
 import { TripSpec } from "./tripSpec";
-import { scoreResortForTrip } from "./snow";
 
 export type Resort = {
   id: string;
   name: string;
   region: string;
   state: string;
+  passPrograms: Array<"ikon" | "epic" | "indy" | "mountain_collective">;
+  nearestAirport: string;
   lat: number;
   lng: number;
   terrain: {
@@ -25,6 +26,8 @@ export const RESORTS: Resort[] = [
     name: "Palisades Tahoe",
     region: "Tahoe",
     state: "California",
+    passPrograms: ["ikon", "mountain_collective"],
+    nearestAirport: "RNO",
     lat: 39.1975,
     lng: -120.2358,
     terrain: { beginner: 0.25, intermediate: 0.45, advanced: 0.2, expert: 0.1 },
@@ -37,6 +40,8 @@ export const RESORTS: Resort[] = [
     name: "Heavenly",
     region: "South Tahoe",
     state: "California",
+    passPrograms: ["epic"],
+    nearestAirport: "RNO",
     lat: 38.9351,
     lng: -119.9396,
     terrain: { beginner: 0.32, intermediate: 0.45, advanced: 0.18, expert: 0.05 },
@@ -49,6 +54,8 @@ export const RESORTS: Resort[] = [
     name: "Northstar",
     region: "North Tahoe",
     state: "California",
+    passPrograms: ["epic"],
+    nearestAirport: "RNO",
     lat: 39.2749,
     lng: -120.1212,
     terrain: { beginner: 0.4, intermediate: 0.4, advanced: 0.15, expert: 0.05 },
@@ -61,6 +68,8 @@ export const RESORTS: Resort[] = [
     name: "Breckenridge",
     region: "Summit County",
     state: "Colorado",
+    passPrograms: ["epic"],
+    nearestAirport: "DEN",
     lat: 39.4817,
     lng: -106.0384,
     terrain: { beginner: 0.11, intermediate: 0.31, advanced: 0.26, expert: 0.32 },
@@ -73,6 +82,8 @@ export const RESORTS: Resort[] = [
     name: "Keystone",
     region: "Summit County",
     state: "Colorado",
+    passPrograms: ["epic"],
+    nearestAirport: "DEN",
     lat: 39.5792,
     lng: -105.9347,
     terrain: { beginner: 0.12, intermediate: 0.39, advanced: 0.36, expert: 0.13 },
@@ -85,6 +96,8 @@ export const RESORTS: Resort[] = [
     name: "Vail",
     region: "Vail Valley",
     state: "Colorado",
+    passPrograms: ["epic"],
+    nearestAirport: "EGE",
     lat: 39.6403,
     lng: -106.3742,
     terrain: { beginner: 0.18, intermediate: 0.29, advanced: 0.39, expert: 0.14 },
@@ -97,37 +110,4 @@ export const RESORTS: Resort[] = [
 export function findResortByName(name: string): Resort | null {
   const lower = name.toLowerCase();
   return RESORTS.find((resort) => resort.name.toLowerCase().includes(lower)) ?? null;
-}
-
-export function shortlistResorts(spec: TripSpec, limit = 3): Resort[] {
-  if (spec.location.resort) {
-    const match = findResortByName(spec.location.resort);
-    return match ? [match] : [];
-  }
-
-  let candidates = RESORTS;
-
-  if (spec.location.region) {
-    const regionLower = spec.location.region.toLowerCase();
-    candidates = candidates.filter((resort) => resort.region.toLowerCase().includes(regionLower));
-  }
-
-  if (spec.location.state) {
-    const stateLower = spec.location.state.toLowerCase();
-    candidates = candidates.filter((resort) => resort.state.toLowerCase().includes(stateLower));
-  }
-
-  if (spec.location.openToSuggestions || candidates.length === 0) {
-    candidates = RESORTS;
-  }
-
-  const scored = candidates.map((resort) => ({
-    resort,
-    score: scoreResortForTrip(spec, resort)
-  }));
-
-  return scored
-    .sort((a, b) => b.score.score - a.score.score)
-    .slice(0, limit)
-    .map((entry) => entry.resort);
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createOAuthClient } from "../integrations/googleAuth";
-import { createSheetForTrip } from "../core/sheets";
+import { createSheetForTrip } from "../integrations/googleSheets";
 import { getGoogleRefreshToken } from "../persistence/googleTokens";
 import { loadConversation } from "../conversations/sessionService";
 import { getConversationStore } from "../persistence";

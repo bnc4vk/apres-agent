@@ -36,10 +36,7 @@ app.post("/api/chat", async (req, res) => {
     const store = getConversationStore();
     const cookieSessionId = readSessionId(req.headers.cookie);
     const loaded = await loadConversation(cookieSessionId ?? sessionId);
-    const active =
-      loaded.conversation.decisionPackage
-        ? await resetConversationForNewChat(loaded)
-        : loaded;
+    const active = loaded;
     const chatSession = toChatSession(active);
     const previousCount = chatSession.history.length;
     const updatedSession = await handleUserMessage(chatSession, message);

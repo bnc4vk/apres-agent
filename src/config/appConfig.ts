@@ -20,6 +20,7 @@ export const appConfig = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
   googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY ?? "",
+  serpApiKey: process.env.SERPAPI_KEY ?? "",
   persistenceDriver: process.env.PERSISTENCE_DRIVER ?? "supabase"
 };
 
@@ -28,11 +29,5 @@ export const isSecureCookie = appConfig.baseUrl.startsWith("https://");
 export function assertGoogleOAuthConfig(): void {
   if (!appConfig.googleClientId || !appConfig.googleClientSecret || !appConfig.googleRedirectUri) {
     throw new Error("Missing Google OAuth config. Set GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI.");
-  }
-}
-
-export function assertGooglePlacesConfig(): void {
-  if (!appConfig.googlePlacesApiKey) {
-    throw new Error("Missing GOOGLE_PLACES_API_KEY.");
   }
 }

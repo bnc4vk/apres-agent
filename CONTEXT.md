@@ -1,75 +1,102 @@
-# Apres AI — thread context summary
+# Apres AI — Current Thread Handoff Context
 
 ## Project snapshot
-- Repo: `/Users/bencohen/Desktop/apres-agent`
-- Current name/branding: **Apres AI** (UI + README + server log updated)
-- Default dev server port: `5001`
-- Chat flow: LangGraph orchestration + Mistral SDK structured outputs
-- LLM provider: Mistral (models: `mistral-large-latest`, `mistral-small-latest`)
-- `.env` expected: `MISTRAL_API_KEY`, `LLM_PROVIDER`, `MISTRAL_LARGE_MODEL`, `MISTRAL_SMALL_MODEL`
-- No git remote configured yet; local commit exists (`Rebrand to Apres AI`)
+- Repo path: `/Users/bencohen/Desktop/apres-agent`
+- App name: **Apres AI**
+- Dev URL: `http://localhost:5001`
+- Stack: Node + Express + TypeScript + LangGraph + Mistral
+- Persistence: Supabase-backed session/conversation store (`app_sessions`, `app_conversations`, `app_messages`, `app_google_tokens`)
+- Test persistence mode: in-memory store via `PERSISTENCE_DRIVER=memory`
 
-## Key actions completed
-- **Removed all regex/keyword extraction**; trip spec updates are **LLM-only** with structured outputs + evidence gating.
-- **Added LangGraph flow** with nodes:
-  - append user → spec patch → merge → date resolution → issue check → route → follow-up / finalize.
-- **Implemented deterministic date resolution tool** to avoid “missing year” loops:
-  - Resolves “this month/next month/late January/March” based on current date.
-  - Infers year automatically (no numeric year required).
-- **Simplified missing field logic** so dates are considered resolved when valid ISO start/end exist (no `yearConfirmed` requirement).
-- **Added follow-up tone constraints** to reduce generic cheerleading and lowered temperature for follow-up questions.
-- **Added UI typing indicator + delay** and **extra delay for final itinerary responses** (`replyKind` = `final` triggers 2× delay).
-- **Rebranded UI** and welcome message to “Apres AI.”
+## Product goal
+- Ski-group organizers need to capture constraints quickly, generate itinerary options, stress-test budget realism, and centralize planning artifacts (especially Google Sheets + research links).
 
-## Product requirements (captured + adjusted during thread)
+## What is implemented now
 
-### MVP requirements
-- Chat interface for users to discuss ski trip planning.
-- Chatbot is **dynamic but ringfenced** to ski-trip planning, focused on extracting:
-  1) group size + skill level range\n+  2) gear rental required (including partial rentals)\n+  3) budget preference\n+  4) travel restrictions (e.g., no flying, max drive hours)\n+  5) desired dates (supports exact dates or date windows)\n+  6) ability to collect more itinerary detail later
-- Once minimum required info is obtained, run a decision process that generates **2–3 itinerary candidates**.
-- Resort selection considers skill level + time of year + a snow/temperature heuristic.
-  - Current heuristic: **≥ 12\" monthly snowfall** and **avg temp ≤ 50°F** (based on the repo’s small static dataset).
-- Create a Google Sheets document with details (currently **stubbed**).
-- Fetch best-rated nearby gear shops close to accommodation (currently **stubbed** POI enrichment).
-- Prepare gear pickup details (pickup/return windows, shop hours) (stubbed).
-- Identify grocery stores nearby (stubbed).
-- Identify restaurants nearby (stubbed).
-- Propose car rental options when flying is required; include weather-driven AWD/chains suggestions (stubbed).
+### 1) Intake, graph flow, and assumptions
+- LangGraph intake flow persists full conversation + `TripSpec`.
+- Missing-field progression is deterministic by top missing field.
+- Soft assumption mode appears after sparse multi-turn input and supports explicit “proceed with assumptions”.
+- Date resolution handles fuzzy/month phrasing and month+year windows.
 
-### MVP scope decisions / modifications from the thread
-- **LLM-only extraction**: removed all keyword/regex-based extraction. TripSpec updates come exclusively from LLM structured outputs + evidence gating.
-- **Dates/year**: do **not** require users to type a numeric year; resolve month/year deterministically from the current date and user phrasing (“this month”, “March”, “late January”, etc.) without follow-ups.
-- **Location input flexibility**: user can provide a resort, a region/state, or nothing (“suggest options”) and the intake flow should handle all paths.
-- **Departure locations**: itinerary generation is **blocked** when travel constraints require it (e.g., no flying / max drive hours) until the user provides group “traveler pods” (e.g., “3 from SF, 3 from Sacramento”).
-- **MVP bookings**: no “hard” bookings in MVP. Only “low-barrier” linkouts if/when they exist; otherwise omit.
-- **Google Sheets auth**: desired UX is one-click Google account linking, then create/share a Sheet in the user’s account with appropriate permissions (not implemented yet).
-- **UX timing**: final itinerary response should feel like the slowest step; implemented via a higher minimum delay for `replyKind=final`.
+### 2) Budget intelligence
+- Budget graph estimates per-person totals across:
+  - pass,
+  - flights/travel,
+  - food,
+  - gear rental,
+  - housing.
+- Feasibility warnings are surfaced when constraints are unrealistic.
+- Budget summary is attached to the decision package and surfaced in UI + final summary.
 
-### Future requirements (not implemented)
-- Book car rental on user’s behalf (provider integrations + payments + policy constraints).
-- Make gear rental reservations on user’s behalf.
-- Order grocery pickup to match arrival time on user’s behalf.
-- Easy extensibility for adding new tools/nodes to the agent graph.
+### 3) Session and chat behavior
+- Signed session cookie support.
+- Supabase persistence with memory fallback in tests.
+- Full chat reload on refresh.
+- **Current behavior:** post-final follow-up messages refine in same thread.
+- Explicit reset remains available via `New trip` button + `POST /api/session/new`.
 
-## Removed / changed
-- Removed “July-in-California” season check (was added briefly, then fully removed).
+### 4) Google integrations
+- OAuth endpoints: `/api/auth/google/start`, `/api/auth/google/callback`.
+- Sheets export endpoint: `/api/export/sheets`.
+- OAuth blocked path redirects to app with `?google=blocked` and shows user guidance.
+- Sheet export includes Summary/Itineraries/POIs/Logistics tabs and budget-related columns.
+- Drive permission set to `anyone` + `writer`.
 
-## Notable behavior
-- Itinerary generation uses local dataset + date-window candidates.
-- Final response is deterministic and fast; artificial delay added client-side for UX.
+### 5) POI + organizer actions
+- Google Places for gear/grocery/restaurants with fallback behavior.
+- Per-itinerary action chips for lodging/gear/grocery/takeout/cars.
+- Itinerary expansion endpoint remains available.
 
-## Tests
-- `npm test` runs unit + API tests using the stub LLM.
+### 6) UI state
+- Light minimalist two-column desktop workspace + mobile single-column fallback.
+- Reduced UI overhead: `New trip` hidden until itinerary completion, send CTA changes to `Refine` after final.
+- Assistant URLs are rendered as links; final summary avoids raw URL dumps.
 
-## Known gaps / follow-ups
-- Git remote not configured; push to `main` still pending.
-- If you want cross-provider LLM portability, the `LLMClient` interface is the adapter boundary.
-- Google Sheets + POI + car/gear rental integrations are stubs and need real API-backed implementations.
+## Current API surface (not exhaustive)
+- `GET /api/session`
+- `POST /api/chat`
+- `POST /api/session/new`
+- `POST /api/itinerary/expand`
+- `GET /api/auth/google/start`
+- `GET /api/auth/google/callback`
+- `POST /api/export/sheets`
 
-## How to run
-```bash
-npm install
-npm run dev
-# open http://localhost:5001
-```
+## Code layout (post-refactor)
+- `src/graph/chat/`: chat graph split by concern (`index.ts`, `assumptions.ts`, `messaging.ts`, `spec.ts`)
+- `src/core/budget/`: budget graph modules (`index.ts`, `estimators.ts`, `origins.ts`, `types.ts`)
+- `src/core/resorts.ts`: dataset
+- `src/core/resortRanking.ts`: shortlist/ranking
+- `public/js/`: frontend modules (`main.js`, `renderers.js`, `session.js`)
+- `public/css/`: style modules (`base.css`, `layout.css`, `components.css`)
+- Compatibility shim files preserved for import stability:
+  - `src/graph/chatGraph.ts` → re-exports from `src/graph/chat/index.ts`
+  - `src/core/budgetGraph.ts` → re-exports from `src/core/budget/index.ts`
+
+## Thread execution notes (Feb 6, 2026)
+- Performed deep dependency audit and removed unused legacy paths:
+  - deleted `src/conversations/sessions.ts`
+  - deleted `src/core/validators.ts`
+  - deleted `src/core/sheets.ts`
+  - removed unused LLM follow-up method/interface and stale config/util exports.
+- Resolved real TypeScript import cycle detected by `madge`:
+  - previous cycle: `src/core/resorts.ts` ↔ `src/core/snow.ts`
+  - fix: moved shortlist/ranking behavior into `src/core/resortRanking.ts`.
+- Frontend was decomposed from monolithic files into module folders (`public/js`, `public/css`) and `index.html` now loads app entry as ES module.
+- Refactor safety process used repeatedly at each stage:
+  - run `npm test`
+  - run `npm run build`
+  - run `npx madge --extensions ts --circular src`
+  - run Chromium smoke for planner flow/UI sanity.
+
+## Validation status
+- `npm test` passes.
+- `npm run build` passes.
+- Cycle scan passes: `npx madge --extensions ts --circular src`.
+- Chromium smoke pass completed on refactored frontend.
+
+## Known follow-up tasks
+- Improve live-model extraction reliability for deterministic finalize within ~3 informative turns.
+- Reduce long final assistant text density via sectioned rendering.
+- Add optional project-specific OAuth remediation CTA link.
+- Expand resort/POI coverage and deepen car pricing signals.

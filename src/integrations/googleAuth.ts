@@ -2,9 +2,6 @@ import { google } from "googleapis";
 import { appConfig, assertGoogleOAuthConfig } from "../config/appConfig";
 
 export const GOOGLE_SCOPES = [
-  "openid",
-  "email",
-  "profile",
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.file"
 ];

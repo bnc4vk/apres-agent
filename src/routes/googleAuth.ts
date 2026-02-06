@@ -26,6 +26,15 @@ googleAuthRouter.get("/callback", async (req, res) => {
   try {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
+    const oauthError = typeof req.query.error === "string" ? req.query.error : null;
+    if (oauthError) {
+      const reason =
+        oauthError === "access_denied"
+          ? "access_denied"
+          : "oauth_error";
+      res.redirect(`${appConfig.baseUrl}/?google=blocked&reason=${encodeURIComponent(reason)}`);
+      return;
+    }
     if (!code) {
       res.status(400).send("Missing OAuth code.");
       return;
@@ -47,6 +56,6 @@ googleAuthRouter.get("/callback", async (req, res) => {
     res.redirect(`${appConfig.baseUrl}/?google=linked`);
   } catch (error) {
     console.error(error);
-    res.status(500).send("Failed to complete Google OAuth.");
+    res.redirect(`${appConfig.baseUrl}/?google=blocked&reason=oauth_callback_failed`);
   }
 });

@@ -8,9 +8,17 @@ export type ResearchLinks = {
   takeoutSearch: string;
 };
 
-export function buildResearchLinks(spec: TripSpec, resortName: string): ResearchLinks {
+export function buildResearchLinks(
+  spec: TripSpec,
+  resortName: string,
+  lodgingNightlyCap?: number | null
+): ResearchLinks {
   const dates = `${spec.dates.start ?? ""} to ${spec.dates.end ?? ""}`.trim();
-  const lodgingQuery = encodeURIComponent(`${resortName} lodging ${dates}`);
+  const lodgingBudgetHint =
+    typeof lodgingNightlyCap === "number" && lodgingNightlyCap > 0
+      ? ` under $${lodgingNightlyCap} per night`
+      : "";
+  const lodgingQuery = encodeURIComponent(`${resortName} lodging ${dates}${lodgingBudgetHint}`);
   const gearQuery = encodeURIComponent(`ski rental near ${resortName}`);
   const groceryQuery = encodeURIComponent(`grocery store near ${resortName}`);
   const takeoutQuery = encodeURIComponent(`takeout restaurants near ${resortName}`);

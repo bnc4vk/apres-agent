@@ -1,0 +1,81 @@
+.app {
+  max-width: 1240px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 26px 22px;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
+  gap: 18px;
+  align-items: stretch;
+  flex: 1;
+}
+
+.chat,
+.actions {
+  border: 1px solid var(--stroke);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.chat {
+  min-height: 58vh;
+  padding: 18px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.actions {
+  min-height: 58vh;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: rise 220ms ease;
+}
+
+footer {
+  margin-top: 12px;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .app {
+    padding: 18px 14px;
+  }
+
+  main {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .chat,
+  .actions {
+    min-height: unset;
+  }
+
+  .bubble {
+    max-width: 92%;
+  }
+
+  .chat-form {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-form button {
+    justify-self: flex-end;
+  }
+}

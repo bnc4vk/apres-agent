@@ -1,7 +1,7 @@
 import { Mistral } from "@mistralai/mistralai";
 import { z } from "zod";
 import { TripSpecPatch, TripSpecPatchSchema, TripSpec } from "../core/tripSpec";
-import { LLMClient, FollowupQuestionOutput, SpecPatchInput, FollowupQuestionInput } from "./client";
+import { LLMClient, SpecPatchInput } from "./client";
 import { mistralApiKey, mistralLargeModel } from "./config";
 import { ChatMessage } from "./types";
 
@@ -16,14 +16,6 @@ const SpecPatchWithEvidenceSchema = z
   .object({
     patch: TripSpecPatchSchema,
     evidence: z.array(EvidenceItemSchema)
-  })
-  .strict();
-
-const FollowupSchema = z
-  .object({
-    acknowledgement: z.string().min(1),
-    question: z.string().min(1),
-    askedFields: z.array(z.string()).min(1)
   })
   .strict();
 
@@ -96,33 +88,6 @@ export class MistralLLMClient implements LLMClient {
     }
   }
 
-  async generateFollowupQuestion(input: FollowupQuestionInput): Promise<FollowupQuestionOutput> {
-    const prompt = buildFollowupPrompt(input.tripSpec, input.missingFields);
-    const response = await this.mistral.chat.parse(
-      {
-        model: mistralLargeModel,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...toMistralMessages(input.messages.slice(-12)),
-          { role: "user", content: prompt }
-        ],
-        responseFormat: FollowupSchema,
-        temperature: 0.3
-      },
-      {}
-    );
-
-    const parsed = response.choices?.[0]?.message?.parsed;
-    if (!parsed) {
-      return {
-        acknowledgement: "Got it.",
-        question: "What else should I know about the trip?",
-        askedFields: input.missingFields.slice(0, 1)
-      };
-    }
-    const output = parsed as z.infer<typeof FollowupSchema>;
-    return { acknowledgement: output.acknowledgement, question: output.question, askedFields: output.askedFields };
-  }
 }
 
 function buildSpecPatchPrompt(tripSpec: TripSpec, lastUserMessage: string): string {
@@ -144,7 +109,9 @@ function buildSpecPatchPrompt(tripSpec: TripSpec, lastUserMessage: string): stri
     "- If the user says 'need rentals' or 'need gear rentals', set gear.rentalRequired=true.",
     "- If the user states a budget band (low/mid/high/luxury/cheap), set budget.band accordingly.",
     "- If the user mentions partial rentals, set gear.rentalNotes and/or gear.rentalShare.",
-    "- If the user mentions Ikon/Epic passes, set notes.passes with types/notes.",
+    "- If the user mentions Ikon/Epic/Indy/Mountain Collective passes, set notes.passes counts when possible.",
+    "- If the user provides pass ownership counts, map to notes.passes.ikonCount/epicCount/indyCount/mountainCollectiveCount/noPassCount and set notes.passes.confirmed=true.",
+    "- If the user says they have no passes, set notes.passes.noPassCount (or include notes) and notes.passes.confirmed=true.",
     "- If the user mentions a budget in dollars, set budget.perPersonMax or budget.totalMax and budget.currency.",
     "- If the user mentions an airport (e.g., DEN), set travel.arrivalAirport.",
     "- If the user mentions a state (e.g., Colorado), set location.state.",
@@ -152,22 +119,6 @@ function buildSpecPatchPrompt(tripSpec: TripSpec, lastUserMessage: string): stri
     `Current TripSpec JSON:\n${JSON.stringify(tripSpec)}`,
     "",
     `User last message:\n${lastUserMessage}`
-  ].join("\n");
-}
-
-function buildFollowupPrompt(tripSpec: TripSpec, missingFields: string[]): string {
-  return [
-    "You are continuing an intake conversation for a ski trip.",
-    "Generate a short acknowledgement and then ask the next best question.",
-    "Keep the acknowledgement neutral and professional; match the user's tone.",
-    "Avoid cheerleading or praise unless the user expresses excitement.",
-    "Avoid exclamation marks unless the user used them.",
-    "Ask for at most 1-2 missing items and reference what you already captured.",
-    "Return JSON with fields: acknowledgement, question, askedFields (list of missing field keys you are asking about).",
-    "If traveler departure locations are required (traveler_pods missing), ask for pods like: '3 from SF, 3 from Sacramento'.",
-    "",
-    `Missing fields: ${missingFields.join(", ")}`,
-    `Current TripSpec JSON:\n${JSON.stringify(tripSpec)}`
   ].join("\n");
 }
 
