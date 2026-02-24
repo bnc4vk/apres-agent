@@ -22,6 +22,7 @@ Open `http://localhost:5001`.
 ```bash
 npm test
 npm run build
+npm run eval:trip
 ```
 
 ## Repo structure
@@ -60,7 +61,11 @@ npm run build
 - `test/run.ts`: unit/API regression suite.
 
 ## Environment variables
-- LLM: `LLM_PROVIDER`, `MISTRAL_API_KEY`, `MISTRAL_LARGE_MODEL`
+- LLM:
+  - `LLM_PROFILE` = `mistral_free` | `mistral_paid` | `openai_sota` | `stub`
+  - `MISTRAL_API_KEY`, `MISTRAL_FREE_MODEL`, `MISTRAL_PAID_MODEL`
+  - `OPENAI_API_KEY`, `OPENAI_SOTA_MODEL`
+  - `LLM_REASONING_REVIEW_ENABLED` (default `true`) toggles LLM rerank/explanation on top of deterministic candidates
 - App/security: `BASE_URL`, `SESSION_SECRET`, `TOKEN_ENC_KEY`
 - Persistence: `SUPABASE_URL`, `SUPABASE_API_KEY`, `PERSISTENCE_DRIVER`, `CHAT_PERSISTENCE_ENABLED`
 - Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_PLACES_API_KEY`
@@ -68,6 +73,13 @@ npm run build
 - Booking: `BOOKING_API_KEY`, `BOOKING_API_BASE_URL`
 - Splitwise: `SPLITWISE_ACCESS_TOKEN`, `SPLITWISE_API_BASE_URL`
 - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_CONVERSATIONS_SERVICE_SID`
+
+### Eval examples
+```bash
+LLM_PROFILE=mistral_free npm run eval:trip
+LLM_PROFILE=openai_sota npm run eval:trip
+EVAL_LLM_PROFILES=mistral_free,openai_sota npm run eval:trip
+```
 
 ## Developer notes
 - Keep files under ~300 lines where practical; split by concern when growing.

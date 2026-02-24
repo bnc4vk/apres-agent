@@ -14,13 +14,14 @@ import {
   shouldOfferAssumptionMode
 } from "./assumptions";
 import { buildDecisionSummary } from "./messaging";
-import { autoConfirm, detectIssue } from "./spec";
+import { autoConfirm, deriveHeuristicPatchFromUserMessage, detectIssue } from "./spec";
 import {
   applyExtractionResult,
   buildGeneralizedFollowup,
   filterActionableUnresolvedPaths,
   filterUnresolvedForMissingFields
 } from "../../core/specExtraction";
+import { enrichDecisionPackageWithLLMReview } from "../../services/decisionReviewService";
 
 type GraphState = {
   tripSpec: TripSpec;
@@ -113,7 +114,10 @@ export function buildChatGraph(llm: LLMClient) {
       const extractionResult = state.extractionResult;
       if (!extractionResult) return {};
       const applied = applyExtractionResult(state.tripSpec, extractionResult);
-      const tripSpec = autoConfirm(applied.tripSpec);
+      const heuristicPatch = deriveHeuristicPatchFromUserMessage(state.userMessage, applied.tripSpec);
+      const tripSpec = autoConfirm(
+        Object.keys(heuristicPatch).length > 0 ? mergeTripSpec(applied.tripSpec, heuristicPatch) : applied.tripSpec
+      );
       return {
         tripSpec,
         unresolvedPaths: applied.unresolvedPaths,
@@ -173,7 +177,7 @@ export function buildChatGraph(llm: LLMClient) {
       if (missing.length === 0 && unresolved.length === 0) {
         return {
           tripSpec,
-          decisionPackage: await buildDecisionPackage(tripSpec)
+          decisionPackage: await enrichDecisionPackageWithLLMReview(tripSpec, await buildDecisionPackage(tripSpec), llm)
         };
       }
 
@@ -188,7 +192,11 @@ export function buildChatGraph(llm: LLMClient) {
         );
         return {
           tripSpec: assumedSpec,
-          decisionPackage: await buildDecisionPackage(assumedSpec),
+          decisionPackage: await enrichDecisionPackageWithLLMReview(
+            assumedSpec,
+            await buildDecisionPackage(assumedSpec),
+            llm
+          ),
           generationNote: buildGenerationNote(actionableMissing)
         };
       }

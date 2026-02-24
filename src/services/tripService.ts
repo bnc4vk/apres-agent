@@ -4,6 +4,7 @@ import { loadConversation, loadConversationByTripId } from "../conversations/ses
 import { getConversationStore } from "../adapters/persistence";
 import { bootstrapSplitwiseGroup } from "../adapters/integrations/splitwise";
 import { bootstrapConversation } from "../adapters/integrations/twilioConversations";
+import { enrichDecisionPackageWithLLMReview } from "./decisionReviewService";
 
 export type TripRecord = {
   tripId: string;
@@ -51,7 +52,10 @@ export async function patchTripSpec(tripId: string, patch: TripSpecPatch): Promi
 export async function refreshTripOptions(tripId: string): Promise<TripRecord | null> {
   const loaded = await loadConversationByTripId(tripId);
   if (!loaded) return null;
-  const decisionPackage = await buildDecisionPackage(loaded.conversation.tripSpec);
+  const decisionPackage = await enrichDecisionPackageWithLLMReview(
+    loaded.conversation.tripSpec,
+    await buildDecisionPackage(loaded.conversation.tripSpec)
+  );
   const store = getConversationStore();
   await store.updateConversation(loaded.conversation.id, { decisionPackage });
   return {
@@ -65,7 +69,12 @@ export async function refreshTripOptions(tripId: string): Promise<TripRecord | n
 export async function bootstrapTripSplitwise(tripId: string): Promise<TripRecord | null> {
   const loaded = await loadConversationByTripId(tripId);
   if (!loaded) return null;
-  const decisionPackage = loaded.conversation.decisionPackage ?? (await buildDecisionPackage(loaded.conversation.tripSpec));
+  const decisionPackage =
+    loaded.conversation.decisionPackage ??
+    (await enrichDecisionPackageWithLLMReview(
+      loaded.conversation.tripSpec,
+      await buildDecisionPackage(loaded.conversation.tripSpec)
+    ));
   const summary = decisionPackage.budgetSummary;
   const seededExpenses = [
     { description: "Lodging deposit", cost: Math.max(1, Math.round(summary.bestGroupTotal * 0.25)) },
@@ -100,7 +109,12 @@ export async function bootstrapTripSplitwise(tripId: string): Promise<TripRecord
 export async function bootstrapTripChat(tripId: string): Promise<TripRecord | null> {
   const loaded = await loadConversationByTripId(tripId);
   if (!loaded) return null;
-  const decisionPackage = loaded.conversation.decisionPackage ?? (await buildDecisionPackage(loaded.conversation.tripSpec));
+  const decisionPackage =
+    loaded.conversation.decisionPackage ??
+    (await enrichDecisionPackageWithLLMReview(
+      loaded.conversation.tripSpec,
+      await buildDecisionPackage(loaded.conversation.tripSpec)
+    ));
   const result = await bootstrapConversation({
     tripName: `Apres ${decisionPackage.resortShortlist[0] ?? "Trip"} Group Chat`,
     participants: [{ identity: "organizer" }]

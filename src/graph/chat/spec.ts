@@ -1,4 +1,4 @@
-import { TripSpec, updateTripSpecStatus } from "../../core/tripSpec";
+import { TripSpec, TripSpecPatch, updateTripSpecStatus } from "../../core/tripSpec";
 
 export function detectIssue(spec: TripSpec): string | null {
   if (spec.dates.start && spec.dates.end && spec.dates.start > spec.dates.end) {
@@ -102,4 +102,142 @@ export function autoConfirm(spec: TripSpec): TripSpec {
   }
 
   return updateTripSpecStatus(updated);
+}
+
+export function deriveHeuristicPatchFromUserMessage(message: string, spec: TripSpec): TripSpecPatch {
+  const text = (message || "").toLowerCase();
+  if (!text.trim()) return {};
+
+  const patch: TripSpecPatch = {};
+
+  const stateMatch = inferState(text);
+  if (stateMatch) {
+    patch.location = {
+      ...(patch.location ?? {}),
+      state: stateMatch,
+      confirmed: true
+    };
+  }
+
+  const regionMatch = inferRegion(text);
+  if (regionMatch) {
+    patch.location = {
+      ...(patch.location ?? {}),
+      region: regionMatch,
+      confirmed: true
+    };
+  }
+
+  if (/\bno travel restrictions?\b/.test(text) || /\bno restrictions?\b/.test(text)) {
+    patch.travel = {
+      ...(patch.travel ?? {}),
+      noFlying: false,
+      restrictions: [],
+      confirmed: true
+    };
+  }
+
+  if (/\bepic\b|\bikon\b|\bindy\b|\bmountain collective\b/.test(text)) {
+    const groupSize = spec.group.size;
+    const inferredPasses = inferPassPatch(text, groupSize);
+    patch.notes = {
+      ...(patch.notes ?? {}),
+      passes: {
+        ...(patch.notes?.passes ?? {}),
+        ...(inferredPasses ?? {}),
+        notes: message,
+        confirmed: true
+      }
+    };
+  }
+
+  return patch;
+}
+
+function inferState(text: string): string | null {
+  if (/\bcolorado\b|\bco\b/.test(text)) return "Colorado";
+  if (/\butah\b|\but\b/.test(text)) return "Utah";
+  if (/\bcalifornia\b|\bca\b/.test(text)) return "California";
+  if (/\bwyoming\b|\bwy\b/.test(text)) return "Wyoming";
+  if (/\bmontana\b|\bmt\b/.test(text)) return "Montana";
+  return null;
+}
+
+function inferRegion(text: string): string | null {
+  if (/\btahoe\b/.test(text)) return "Tahoe";
+  if (/\bwasatch\b/.test(text)) return "Wasatch";
+  if (/\bsummit county\b/.test(text)) return "Summit County";
+  return null;
+}
+
+function inferPassPatch(
+  text: string,
+  groupSize: number | undefined
+):
+  | {
+      ikonCount?: number;
+      epicCount?: number;
+      indyCount?: number;
+      mountainCollectiveCount?: number;
+      noPassCount?: number;
+    }
+  | null {
+  if (!groupSize || groupSize <= 0) {
+    return null;
+  }
+
+  const result: {
+    ikonCount?: number;
+    epicCount?: number;
+    indyCount?: number;
+    mountainCollectiveCount?: number;
+    noPassCount?: number;
+  } = {};
+
+  const programs: Array<{ key: keyof typeof result; token: string }> = [
+    { key: "epicCount", token: "epic" },
+    { key: "ikonCount", token: "ikon" },
+    { key: "indyCount", token: "indy" },
+    { key: "mountainCollectiveCount", token: "mountain collective" }
+  ];
+
+  let assigned = 0;
+  for (const program of programs) {
+    if (!text.includes(program.token)) continue;
+    const count = inferCountForToken(text, program.token, groupSize);
+    if (typeof count === "number") {
+      result[program.key] = count;
+      assigned += count;
+    }
+  }
+
+  if (/\bno one\b.*\b(pass|passes)\b/.test(text) || /\bnobody\b.*\b(pass|passes)\b/.test(text)) {
+    result.noPassCount = groupSize;
+    return result;
+  }
+
+  if (assigned > 0 && /\bhalf\b/.test(text) && assigned < groupSize) {
+    result.noPassCount = Math.max(0, groupSize - assigned);
+  } else if (assigned > 0 && /\b(rest|remaining)\b/.test(text) && /\bno pass/.test(text)) {
+    result.noPassCount = Math.max(0, groupSize - assigned);
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function inferCountForToken(text: string, token: string, groupSize: number): number | null {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const halfPattern = new RegExp(`(?:half|1\\/2)\\s+(?:the\\s+group\\s+)?(?:has|have)?\\s*${escaped}`, "i");
+  if (halfPattern.test(text)) return Math.round(groupSize / 2);
+
+  const allPattern = new RegExp(`(?:everyone|all|entire group).{0,20}${escaped}`, "i");
+  if (allPattern.test(text)) return groupSize;
+
+  const before = text.match(new RegExp(`(\\d+)\\s+(?:people\\s+)?(?:have\\s+)?${escaped}`, "i"));
+  if (before) return Math.max(0, Math.min(groupSize, Number(before[1])));
+
+  const after = text.match(new RegExp(`${escaped}(?:\\s+passes?)?.{0,24}?(\\d+)`, "i"));
+  if (after) return Math.max(0, Math.min(groupSize, Number(after[1])));
+
+  return null;
 }

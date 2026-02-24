@@ -1,7 +1,6 @@
-import { Mistral } from "@mistralai/mistralai";
 import dayjs from "dayjs";
 import { z } from "zod";
-import { TripSpecPatchSchema, TripSpec } from "../core/tripSpec";
+import { TripSpec, TripSpecPatchSchema } from "../core/tripSpec";
 import {
   AssumptionResolutionInput,
   AssumptionResolutionResult,
@@ -12,14 +11,18 @@ import {
   SpecExtractionResult,
   SpecPatchInput
 } from "./client";
-import { mistralApiKey, mistralModelName } from "./config";
+import { openaiApiKey, openaiModelName } from "./config";
 import { ChatMessage } from "./types";
 import {
   buildCandidateReviewPrompt,
-  CandidateReviewSchema,
   CANDIDATE_REVIEW_SYSTEM_PROMPT,
   sanitizeCandidateReview
 } from "./candidateReview";
+
+const OPENAI_HTTP_TIMEOUT_MS = Number(process.env.OPENAI_HTTP_TIMEOUT_MS ?? 45000);
+const OPENAI_REVIEW_HTTP_TIMEOUT_MS = Number(process.env.OPENAI_REVIEW_HTTP_TIMEOUT_MS ?? 120000);
+const OPENAI_REVIEW_MAX_COMPLETION_TOKENS = Number(process.env.OPENAI_REVIEW_MAX_COMPLETION_TOKENS ?? 700);
+const OPENAI_REASONING_EFFORT = (process.env.OPENAI_REASONING_EFFORT ?? "low").trim();
 
 const ExtractedFieldStateSchema = z
   .object({
@@ -78,37 +81,29 @@ const SYSTEM_PROMPT = [
   "Output must be valid JSON matching the provided schema."
 ].join("\n");
 
-function toMistralMessages(messages: ChatMessage[]) {
+function toOpenAIMessages(messages: ChatMessage[]) {
   return messages.map((message) => ({ role: message.role, content: message.content }));
 }
 
-export class MistralLLMClient implements LLMClient {
-  private mistral: Mistral;
-
-  constructor(apiKey = mistralApiKey, private readonly modelName = mistralModelName) {
-    this.mistral = new Mistral({ apiKey });
-  }
+export class OpenAILLMClient implements LLMClient {
+  constructor(
+    private readonly apiKey: string = openaiApiKey,
+    private readonly model: string = openaiModelName
+  ) {}
 
   async extractTripSpec(input: SpecPatchInput): Promise<SpecExtractionResult> {
     try {
       const prompt = buildExtractionPrompt(input.tripSpec, input.lastUserMessage);
-      const response = await this.mistral.chat.parse(
-        {
-          model: this.modelName,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            ...toMistralMessages(input.messages.slice(-12)),
-            { role: "user", content: prompt }
-          ],
-          responseFormat: SpecExtractionSchema,
-          temperature: 0.15
-        },
-        {}
+      const data = await this.chatJson(
+        [
+          { role: "system", content: SYSTEM_PROMPT },
+          ...toOpenAIMessages(input.messages.slice(-12)),
+          { role: "user", content: prompt }
+        ],
+        SpecExtractionSchema,
+        0.15
       );
-
-      const parsed = response.choices?.[0]?.message?.parsed;
-      if (!parsed) return emptyExtraction();
-      const data = parsed as z.infer<typeof SpecExtractionSchema>;
+      if (!data) return emptyExtraction();
       const sanitized = sanitizeExtraction(data, input.lastUserMessage);
       return await this.completeDatesIfNeeded(sanitized, input);
     } catch {
@@ -117,31 +112,23 @@ export class MistralLLMClient implements LLMClient {
   }
 
   async resolveAssumptions(input: AssumptionResolutionInput): Promise<AssumptionResolutionResult> {
-    if (input.pendingAssumptions.length === 0) {
-      return emptyAssumptionResolution();
-    }
+    if (input.pendingAssumptions.length === 0) return emptyAssumptionResolution();
     try {
-      const prompt = buildAssumptionResolutionPrompt(input);
-      const response = await this.mistral.chat.parse(
-        {
-          model: this.modelName,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You classify whether a user accepted, rejected, or left uncertain each pending assumption in a planning conversation."
-            },
-            ...toMistralMessages(input.messages.slice(-12)),
-            { role: "user", content: prompt }
-          ],
-          responseFormat: AssumptionResolutionSchema,
-          temperature: 0.1
-        },
-        {}
+      const data = await this.chatJson(
+        [
+          {
+            role: "system",
+            content:
+              "You classify whether a user accepted, rejected, or left uncertain each pending assumption in a planning conversation."
+          },
+          ...toOpenAIMessages(input.messages.slice(-12)),
+          { role: "user", content: buildAssumptionResolutionPrompt(input) }
+        ],
+        AssumptionResolutionSchema,
+        0.1
       );
-      const parsed = response.choices?.[0]?.message?.parsed as z.infer<typeof AssumptionResolutionSchema> | undefined;
-      if (!parsed) return emptyAssumptionResolution();
-      return sanitizeAssumptionResolution(parsed, input.pendingAssumptions.map((item) => item.id));
+      if (!data) return emptyAssumptionResolution();
+      return sanitizeAssumptionResolution(data, input.pendingAssumptions.map((item) => item.id));
     } catch {
       return emptyAssumptionResolution();
     }
@@ -149,22 +136,27 @@ export class MistralLLMClient implements LLMClient {
 
   async reviewItineraryCandidates(input: CandidateReviewInput): Promise<CandidateReviewResult | null> {
     try {
-      const response = await this.mistral.chat.parse(
-        {
-          model: this.modelName,
-          messages: [
-            { role: "system", content: CANDIDATE_REVIEW_SYSTEM_PROMPT },
-            { role: "user", content: buildCandidateReviewPrompt(input) }
-          ],
-          responseFormat: CandidateReviewSchema,
-          temperature: 0.15
-        },
-        {}
+      const data = await this.chatJson(
+        [
+          { role: "system", content: CANDIDATE_REVIEW_SYSTEM_PROMPT },
+          { role: "user", content: buildCandidateReviewPrompt(input) }
+        ],
+        z.unknown(),
+        0.15,
+        "candidate_review",
+        OPENAI_REVIEW_HTTP_TIMEOUT_MS,
+        OPENAI_REVIEW_MAX_COMPLETION_TOKENS
       );
-      const parsed = response.choices?.[0]?.message?.parsed;
-      if (!parsed) return null;
-      return sanitizeCandidateReview(parsed, input.payload.candidates.map((candidate) => candidate.itineraryId));
-    } catch {
+      if (!data) return null;
+      const review = sanitizeCandidateReview(data, input.payload.candidates.map((candidate) => candidate.itineraryId));
+      if (!review && process.env.LLM_DEBUG_REVIEW === "1") {
+        console.warn("[openai candidate_review] sanitize failed payload:", JSON.stringify(data, null, 2).slice(0, 6000));
+      }
+      return review;
+    } catch (error) {
+      if (process.env.LLM_DEBUG_REVIEW === "1") {
+        console.warn("[openai candidate_review] exception:", error);
+      }
       return null;
     }
   }
@@ -177,20 +169,14 @@ export class MistralLLMClient implements LLMClient {
     if (hasValidDateRange(extraction.patch.dates?.start, extraction.patch.dates?.end)) return extraction;
 
     try {
-      const prompt = buildDateCompletionPrompt(input.tripSpec, input.lastUserMessage, extraction.patch.dates ?? {});
-      const response = await this.mistral.chat.parse(
-        {
-          model: this.modelName,
-          messages: [
-            { role: "system", content: "You convert date intent into concrete ISO date ranges." },
-            { role: "user", content: prompt }
-          ],
-          responseFormat: DateCompletionSchema,
-          temperature: 0.1
-        },
-        {}
+      const parsed = await this.chatJson(
+        [
+          { role: "system", content: "You convert date intent into concrete ISO date ranges." },
+          { role: "user", content: buildDateCompletionPrompt(input.tripSpec, input.lastUserMessage, extraction.patch.dates ?? {}) }
+        ],
+        DateCompletionSchema,
+        0.1
       );
-      const parsed = response.choices?.[0]?.message?.parsed as z.infer<typeof DateCompletionSchema> | undefined;
       if (!parsed) return extraction;
       if (!hasValidDateRange(parsed.start, parsed.end)) return extraction;
 
@@ -209,29 +195,13 @@ export class MistralLLMClient implements LLMClient {
       };
 
       const nextFieldStates = [...extraction.fieldStates];
-      nextFieldStates.push({
-        path: "dates.start",
-        confidence,
-        evidence: input.lastUserMessage
-      });
-      nextFieldStates.push({
-        path: "dates.end",
-        confidence,
-        evidence: input.lastUserMessage
-      });
+      nextFieldStates.push({ path: "dates.start", confidence, evidence: input.lastUserMessage });
+      nextFieldStates.push({ path: "dates.end", confidence, evidence: input.lastUserMessage });
 
       const nextAssumptions = [...extraction.assumptions];
       if (confidence < 0.85) {
-        nextAssumptions.push({
-          path: "dates.start",
-          rationale: parsed.rationale,
-          confidence
-        });
-        nextAssumptions.push({
-          path: "dates.end",
-          rationale: parsed.rationale,
-          confidence
-        });
+        nextAssumptions.push({ path: "dates.start", rationale: parsed.rationale, confidence });
+        nextAssumptions.push({ path: "dates.end", rationale: parsed.rationale, confidence });
       }
 
       const nextUnresolved = extraction.unresolvedPaths.filter((path) => !(path === "dates" || path.startsWith("dates.")));
@@ -244,6 +214,164 @@ export class MistralLLMClient implements LLMClient {
       };
     } catch {
       return extraction;
+    }
+  }
+
+  private async chatJson<T>(
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+    schema: z.ZodSchema<T>,
+    temperature: number,
+    debugLabel?: string,
+    timeoutMs: number = OPENAI_HTTP_TIMEOUT_MS,
+    maxCompletionTokens?: number
+  ): Promise<T | null> {
+    let response: Response;
+    try {
+      response = await this.postChatCompletion(messages, {
+        temperature,
+        timeoutMs,
+        maxCompletionTokens,
+        reasoningEffort: OPENAI_REASONING_EFFORT
+      });
+    } catch (error) {
+      if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+        console.warn(`[openai ${debugLabel}] request exception:`, error);
+      }
+      return null;
+    }
+    if (!response.ok) {
+      const errorText = await safeReadText(response);
+      const shouldRetryWithoutTemperature =
+        response.status === 400 &&
+        /temperature/i.test(errorText) &&
+        /unsupported/i.test(errorText);
+      const shouldRetryWithoutReasoningEffort =
+        response.status === 400 &&
+        /reasoning_effort/i.test(errorText) &&
+        /unsupported/i.test(errorText);
+      if (shouldRetryWithoutTemperature) {
+        try {
+          response = await this.postChatCompletion(messages, {
+            timeoutMs,
+            maxCompletionTokens,
+            reasoningEffort: OPENAI_REASONING_EFFORT
+          });
+        } catch (error) {
+          if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+            console.warn(`[openai ${debugLabel}] retry exception:`, error);
+          }
+          return null;
+        }
+      } else if (shouldRetryWithoutReasoningEffort) {
+        try {
+          response = await this.postChatCompletion(messages, { timeoutMs, maxCompletionTokens, temperature });
+        } catch (error) {
+          if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+            console.warn(`[openai ${debugLabel}] retry(exception, no reasoning_effort):`, error);
+          }
+          return null;
+        }
+      } else {
+        if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+          console.warn(`[openai ${debugLabel}] HTTP ${response.status}: ${errorText.slice(0, 4000)}`);
+        }
+        return null;
+      }
+    }
+
+    if (!response.ok) {
+      if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+        const body = await safeReadText(response);
+        console.warn(`[openai ${debugLabel}] HTTP ${response.status}: ${body.slice(0, 4000)}`);
+      }
+      return null;
+    }
+    const payload = (await response.json()) as any;
+    const content = payload?.choices?.[0]?.message?.content;
+    const text =
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content
+              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+              .join("")
+          : "";
+    if (!text.trim()) {
+      if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+        console.warn(`[openai ${debugLabel}] empty text`, JSON.stringify(payload?.choices?.[0] ?? payload, null, 2).slice(0, 3000));
+      }
+      return null;
+    }
+    const json = safeParseJson(text);
+    if (json === null) {
+      if (debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+        console.warn(`[openai ${debugLabel}] invalid json text:`, text.slice(0, 4000));
+      }
+      return null;
+    }
+    const parsed = schema.safeParse(json);
+    if (!parsed.success && debugLabel && process.env.LLM_DEBUG_REVIEW === "1") {
+      console.warn(`[openai ${debugLabel}] schema parse failed`, parsed.error.issues.slice(0, 5));
+      console.warn(`[openai ${debugLabel}] parsed json:`, JSON.stringify(json, null, 2).slice(0, 4000));
+    }
+    return parsed.success ? parsed.data : null;
+  }
+
+  private postChatCompletion(
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+    options?: { temperature?: number; timeoutMs?: number; maxCompletionTokens?: number; reasoningEffort?: string }
+  ) {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      messages,
+      response_format: { type: "json_object" }
+    };
+    if (typeof options?.temperature === "number" && supportsCustomTemperature(this.model)) {
+      body.temperature = options.temperature;
+    }
+    if (typeof options?.maxCompletionTokens === "number" && Number.isFinite(options.maxCompletionTokens)) {
+      body.max_completion_tokens = Math.max(64, Math.floor(options.maxCompletionTokens));
+    }
+    if (options?.reasoningEffort && /^gpt-5/i.test(this.model.trim())) {
+      body.reasoning_effort = options.reasoningEffort;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? OPENAI_HTTP_TIMEOUT_MS);
+    return fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout));
+  }
+}
+
+async function safeReadText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "<failed to read body>";
+  }
+}
+
+function supportsCustomTemperature(model: string): boolean {
+  // Some reasoning-oriented OpenAI models (e.g. gpt-5) only accept the default temperature.
+  return !/^gpt-5/i.test(model.trim());
+}
+
+function safeParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const fenced = text.match(/```json\s*([\s\S]+?)```/i) ?? text.match(/```\s*([\s\S]+?)```/i);
+    if (!fenced?.[1]) return null;
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      return null;
     }
   }
 }
@@ -344,13 +472,6 @@ function buildAssumptionResolutionPrompt(input: AssumptionResolutionInput): stri
     "- If user says remaining assumptions are fine/valid, accept those pending items.",
     "- If user provides a specific override for one item, reject that item and let extraction handle the explicit value.",
     "- If no clear signal for an item, mark unsure.",
-    "- 'the rest are fine', 'the remaining assumptions are valid', and similar blanket acceptance phrases mean ACCEPT all pending items except any item explicitly overridden in the same message.",
-    "- A specific correction to one item plus a blanket acceptance of the rest should usually produce: rejectedIds=[corrected item], acceptedIds=[all others].",
-    "",
-    "Examples:",
-    "- Pending: [passes, travel_restrictions, location_input]; User: 'the intermediate skiers have Epic passes, the rest of your assumptions are fine' => reject passes; accept travel_restrictions and location_input.",
-    "- Pending: [travel_restrictions, location_input]; User: 'those assumptions are valid' => accept both.",
-    "- Pending: [budget, gear_rental]; User: '$1000 pp and beginners need rentals' => reject both (user provided replacements).",
     "",
     `Pending assumptions JSON:\n${JSON.stringify(input.pendingAssumptions)}`,
     "",

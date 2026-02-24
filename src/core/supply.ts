@@ -11,6 +11,12 @@ export type LodgingOption = {
   name: string;
   nightlyRateUsd: number;
   totalEstimateUsd: number;
+  estimatedSleeps?: number | null;
+  unitsNeededForGroup?: number;
+  supportsWholeGroupSingleUnit?: boolean;
+  groupNightlyTotalUsd?: number;
+  groupTotalEstimateUsd?: number;
+  lodgingType?: "whole_home" | "hotel_room" | "hotel_property" | "unknown";
   bedrooms: number;
   walkMinutesToLift: number | null;
   hotTub: boolean;

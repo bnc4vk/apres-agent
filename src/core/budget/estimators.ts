@@ -81,7 +81,7 @@ function estimatePassCost(
   }
   if (uncoveredCount > groupSize) uncoveredCount = groupSize;
 
-  const dayPassRate = resort?.state === "Colorado" ? 240 : 220;
+  const dayPassRate = estimateDayPassRate(resort);
   const perPerson = (uncoveredCount / groupSize) * dayPassRate * tripDays;
   return { key: "pass", label: "Ski pass", perPerson: round(perPerson), source: "estimated" };
 }
@@ -141,7 +141,7 @@ async function estimateTravelCost(
   }
 
   const averageFlight = weightedSum / Math.max(1, weightedCount);
-  const transferPerPerson = resort ? 75 : 95;
+  const transferPerPerson = estimateTransferPerPerson(resort);
   const source: PriceSource = liveUsed ? "live" : "estimated";
   if (!liveUsed) assumptions.push("Used estimated round-trip flight costs where live fare quotes were unavailable.");
 
@@ -230,7 +230,7 @@ async function estimateHousingCost(
   let source: PriceSource = "live";
   if (!nightlyRoomRate) {
     source = "estimated";
-    nightlyRoomRate = fallbackRoomNightlyRate(spec, resort?.state ?? "Colorado");
+    nightlyRoomRate = fallbackRoomNightlyRate(spec, resort);
     assumptions.push("Used estimated lodging prices where live hotel quotes were unavailable.");
   }
 
@@ -243,13 +243,17 @@ async function estimateHousingCost(
   };
 }
 
-function fallbackRoomNightlyRate(spec: TripSpec, state: string): number {
+function fallbackRoomNightlyRate(spec: TripSpec, resort: Resort | null): number {
+  const state = resort?.state ?? "Colorado";
   const table =
     state === "California"
       ? { low: 215, mid: 325, high: 560 }
-      : { low: 240, mid: 360, high: 620 };
+      : state === "Utah"
+        ? { low: 225, mid: 340, high: 580 }
+        : { low: 240, mid: 360, high: 620 };
   const band = spec.budget.band ?? "mid";
-  return table[band];
+  const profile = resort ? resortBudgetProfile(resort) : { lodgingMultiplier: 1 };
+  return round(table[band] * profile.lodgingMultiplier);
 }
 
 function estimateBudgetTargetPerPerson(spec: TripSpec, groupSize: number): number | null {
@@ -260,6 +264,50 @@ function estimateBudgetTargetPerPerson(spec: TripSpec, groupSize: number): numbe
   if (spec.budget.band === "mid") return 1500;
   if (spec.budget.band === "high") return 2800;
   return null;
+}
+
+function estimateDayPassRate(resort: Resort | null): number {
+  if (!resort) return 235;
+  const profile = resortBudgetProfile(resort);
+  const base = resort.state === "Colorado" ? 240 : resort.state === "Utah" ? 230 : 225;
+  return round(base * profile.passMultiplier);
+}
+
+function estimateTransferPerPerson(resort: Resort | null): number {
+  if (!resort) return 95;
+  const byAirport: Record<string, number> = {
+    DEN: 78,
+    EGE: 128,
+    ASE: 142,
+    HDN: 118,
+    SLC: 62,
+    RNO: 76
+  };
+  const profile = resortBudgetProfile(resort);
+  const base = byAirport[resort.nearestAirport] ?? 85;
+  return round(base * profile.transferMultiplier);
+}
+
+function resortBudgetProfile(resort: Resort): {
+  lodgingMultiplier: number;
+  passMultiplier: number;
+  transferMultiplier: number;
+} {
+  const table: Record<string, { lodgingMultiplier: number; passMultiplier: number; transferMultiplier: number }> = {
+    "vail": { lodgingMultiplier: 1.32, passMultiplier: 1.18, transferMultiplier: 1.08 },
+    "breckenridge": { lodgingMultiplier: 1.14, passMultiplier: 1.08, transferMultiplier: 1 },
+    "keystone": { lodgingMultiplier: 0.97, passMultiplier: 0.98, transferMultiplier: 0.97 },
+    "copper-mountain": { lodgingMultiplier: 1.02, passMultiplier: 1, transferMultiplier: 0.98 },
+    "winter-park": { lodgingMultiplier: 0.99, passMultiplier: 0.96, transferMultiplier: 0.95 },
+    "steamboat": { lodgingMultiplier: 1.12, passMultiplier: 1.03, transferMultiplier: 1.12 },
+    "park-city": { lodgingMultiplier: 1.18, passMultiplier: 1.1, transferMultiplier: 0.9 },
+    "deer-valley": { lodgingMultiplier: 1.38, passMultiplier: 1.22, transferMultiplier: 0.92 },
+    "snowbird": { lodgingMultiplier: 1.08, passMultiplier: 1.02, transferMultiplier: 0.94 },
+    "palisades": { lodgingMultiplier: 1.22, passMultiplier: 1.1, transferMultiplier: 1.05 },
+    "northstar": { lodgingMultiplier: 1.16, passMultiplier: 1.05, transferMultiplier: 1.02 },
+    "heavenly": { lodgingMultiplier: 1.04, passMultiplier: 1.02, transferMultiplier: 0.98 }
+  };
+  return table[resort.id] ?? { lodgingMultiplier: 1, passMultiplier: 1, transferMultiplier: 1 };
 }
 
 function getTripDays(spec: TripSpec, itinerary: BudgetGraphInputItinerary, assumptions: string[]): number {

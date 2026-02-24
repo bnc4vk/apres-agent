@@ -26,6 +26,7 @@ async function run() {
   testGearAutoConfirm({ createEmptyTripSpec, mergeTripSpec, determineMissingFields });
   testResortShortlist({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
   testStateFilterNoFallback({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
+  testOpenSuggestionsDoesNotOverrideExplicitState({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
   await testBudgetGraph({ createEmptyTripSpec, mergeTripSpec, buildItineraries, runBudgetGraph });
   testItineraryBuilder({ createEmptyTripSpec, mergeTripSpec, buildItineraries });
   await testHardConstraintLodging({ createEmptyTripSpec, mergeTripSpec, buildDecisionPackage });
@@ -115,6 +116,22 @@ function testStateFilterNoFallback(deps: any) {
   const resorts = shortlistResorts(spec, 3);
   assert.ok(resorts.length > 0);
   assert.ok(resorts.every((resort) => resort.state === "Utah"));
+}
+
+function testOpenSuggestionsDoesNotOverrideExplicitState(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec, shortlistResorts } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    location: { state: "Colorado", openToSuggestions: true, confirmed: true },
+    dates: { start: "2026-03-14", end: "2026-03-18", yearConfirmed: true },
+    group: { size: 6, skillLevels: ["advanced", "beginner"] },
+    gear: { rentalRequired: true, confirmed: true },
+    budget: { band: "mid", confirmed: true },
+    notes: { passes: { epicCount: 3, noPassCount: 3, confirmed: true } },
+    travel: { noFlying: false, confirmed: true }
+  });
+  const resorts = shortlistResorts(spec, 5);
+  assert.ok(resorts.length > 0);
+  assert.ok(resorts.every((resort) => resort.state === "Colorado"));
 }
 
 function testItineraryBuilder(deps: any) {

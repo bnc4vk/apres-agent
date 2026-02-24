@@ -26,12 +26,20 @@ export type Itinerary = {
     shortfallPerPerson: number | null;
     targetPerPerson: number | null;
     components: Record<"pass" | "travel" | "food" | "gear_rental" | "housing", number>;
+    componentSources?: Partial<Record<"pass" | "travel" | "food" | "gear_rental" | "housing", string>>;
     assumptions: string[];
   };
   researchLinks: ResearchLinks;
   liveOptions?: {
     lodging: LodgingOption[];
     cars: CarOption[];
+  };
+  aiReview?: {
+    rank: number;
+    verdict: string;
+    rationale: string;
+    tradeoffs: string[];
+    confidence: number;
   };
 };
 

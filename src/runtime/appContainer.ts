@@ -10,6 +10,7 @@ import { assertLLMConfig, llmProvider } from "../llm/config";
 import { LLMClient } from "../llm/client";
 import { MistralLLMClient } from "../llm/mistral";
 import { StubLLMClient } from "../llm/stub";
+import { OpenAILLMClient } from "../llm/openai";
 
 export class AppContainer {
   private conversationStore: ConversationStore | null = null;
@@ -53,6 +54,9 @@ export class AppContainer {
     if (!this.llmClient) {
       if (llmProvider === "stub") {
         this.llmClient = new StubLLMClient();
+      } else if (llmProvider === "openai") {
+        assertLLMConfig();
+        this.llmClient = new OpenAILLMClient();
       } else {
         assertLLMConfig();
         this.llmClient = new MistralLLMClient();

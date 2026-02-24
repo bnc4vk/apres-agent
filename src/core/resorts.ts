@@ -104,6 +104,48 @@ export const RESORTS: Resort[] = [
     monthlyAvgTempF: { 11: 29, 12: 21, 1: 20, 2: 21, 3: 25, 4: 33 }
   },
   {
+    id: "copper-mountain",
+    name: "Copper Mountain",
+    region: "Summit County",
+    state: "Colorado",
+    passPrograms: ["ikon"],
+    nearestAirport: "DEN",
+    lat: 39.5022,
+    lng: -106.1511,
+    terrain: { beginner: 0.21, intermediate: 0.25, advanced: 0.36, expert: 0.18 },
+    seasonMonths: [11, 12, 1, 2, 3, 4],
+    monthlySnowInches: { 11: 28, 12: 35, 1: 37, 2: 35, 3: 31, 4: 22 },
+    monthlyAvgTempF: { 11: 27, 12: 19, 1: 18, 2: 19, 3: 23, 4: 31 }
+  },
+  {
+    id: "winter-park",
+    name: "Winter Park",
+    region: "Front Range",
+    state: "Colorado",
+    passPrograms: ["ikon"],
+    nearestAirport: "DEN",
+    lat: 39.886,
+    lng: -105.7625,
+    terrain: { beginner: 0.08, intermediate: 0.18, advanced: 0.34, expert: 0.4 },
+    seasonMonths: [11, 12, 1, 2, 3, 4, 5],
+    monthlySnowInches: { 11: 27, 12: 35, 1: 38, 2: 36, 3: 34, 4: 26, 5: 12 },
+    monthlyAvgTempF: { 11: 24, 12: 17, 1: 15, 2: 17, 3: 21, 4: 28, 5: 37 }
+  },
+  {
+    id: "steamboat",
+    name: "Steamboat",
+    region: "Northwest Colorado",
+    state: "Colorado",
+    passPrograms: ["ikon"],
+    nearestAirport: "HDN",
+    lat: 40.4588,
+    lng: -106.8047,
+    terrain: { beginner: 0.14, intermediate: 0.42, advanced: 0.44, expert: 0 },
+    seasonMonths: [11, 12, 1, 2, 3, 4],
+    monthlySnowInches: { 11: 35, 12: 44, 1: 47, 2: 43, 3: 39, 4: 24 },
+    monthlyAvgTempF: { 11: 28, 12: 20, 1: 18, 2: 20, 3: 25, 4: 33 }
+  },
+  {
     id: "park-city",
     name: "Park City",
     region: "Wasatch",

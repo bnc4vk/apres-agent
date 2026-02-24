@@ -113,13 +113,27 @@
 .link-row a {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   border-radius: 999px;
   border: 1px solid rgba(94, 136, 168, 0.36);
   color: #27557b;
-  padding: 3px 9px;
+  padding: 4px 10px;
   font-size: 0.77rem;
   text-decoration: none;
   background: #f2f9ff;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.link-row a::after {
+  content: "↗";
+  font-size: 0.72rem;
+  opacity: 0.72;
+}
+
+.link-row a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(61, 122, 166, 0.48);
+  box-shadow: 0 5px 12px rgba(62, 120, 162, 0.12);
 }
 
 .ghost-btn {
@@ -173,15 +187,76 @@
   color: #3e6583;
 }
 
+.cost-breakdown {
+  margin-bottom: 8px;
+}
+
+.cost-breakdown-list {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.cost-breakdown-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #486d88;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: rgba(239, 248, 255, 0.8);
+  border: 1px solid rgba(112, 153, 182, 0.14);
+}
+
+.cost-breakdown-row.total {
+  font-weight: 700;
+  color: #214a67;
+  background: rgba(226, 242, 255, 0.95);
+  border-color: rgba(90, 140, 176, 0.28);
+}
+
 .small-muted {
   font-size: 0.8rem;
   color: #58788f;
+}
+
+.lodging-options {
+  margin-bottom: 8px;
+}
+
+.lodging-options .small-muted {
+  margin-bottom: 6px;
+}
+
+.lodging-options .link-row {
+  margin-bottom: 0;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.card-actions .ghost-btn {
+  margin: 0;
+}
+
+.itinerary-ai-review {
+  margin-bottom: 8px;
+}
+
+.itinerary-ai-review .small-muted {
+  margin-bottom: 5px;
 }
 
 .matrix-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
+  min-width: 620px;
 }
 
 .matrix-table th,
@@ -193,6 +268,22 @@
 
 .matrix-table tr.locked {
   background: rgba(202, 237, 255, 0.48);
+}
+
+.matrix-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.matrix-rationale {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.matrix-rationale .small-muted {
+  margin: 0;
+  line-height: 1.3;
 }
 
 .chat-form input {

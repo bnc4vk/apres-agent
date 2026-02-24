@@ -150,22 +150,24 @@ async function writeDecisionMatrix(sheets: any, spreadsheetId: string, decision:
     "Itinerary ID",
     "Resort",
     "Total cost pp",
-    "Lodging fit",
+    "Overall score",
+    "Budget fit",
     "Pass fit",
-    "Travel burden",
-    "Amenity fit",
-    "Walkability",
+    "Snow+Skill fit",
+    "Lodging fit",
+    "Travel fit",
     "Locked"
   ];
   const rows = (decision.decisionMatrix ?? []).map((row) => [
     row.itineraryId,
     row.resortName,
     row.totalCostPerPerson ?? "",
-    row.lodgingFitScore,
+    row.overallScore,
+    row.budgetFitScore,
     row.passFitScore,
-    row.travelBurdenScore,
-    row.amenityFitScore,
-    row.walkabilityScore,
+    row.snowSkillScore,
+    row.lodgingFitScore,
+    row.travelFitScore,
     row.locked ? "Yes" : "No"
   ]);
   await sheets.spreadsheets.values.update({

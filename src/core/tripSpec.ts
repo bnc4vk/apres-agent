@@ -318,14 +318,156 @@ export function normalizeTripSpec(input: unknown): TripSpec {
 }
 
 export function updateTripSpecStatus(spec: TripSpec): TripSpec {
-  const missingFields = determineMissingFields(spec);
+  const derived = applyDerivedPassCounts(spec);
+  const missingFields = determineMissingFields(derived);
   return {
-    ...spec,
+    ...derived,
     status: {
       readyToGenerate: missingFields.length === 0,
       missingFields
     }
   };
+}
+
+function applyDerivedPassCounts(spec: TripSpec): TripSpec {
+  const passes = spec.notes.passes;
+  const groupSize = spec.group.size;
+  if (!passes || !passes.notes || !groupSize || groupSize <= 0) return spec;
+
+  const inferred = inferPassCountsFromNotes(passes.notes, groupSize);
+  if (!inferred) return spec;
+
+  const nextPasses = {
+    ...passes,
+    ikonCount: passes.ikonCount ?? inferred.ikonCount,
+    epicCount: passes.epicCount ?? inferred.epicCount,
+    indyCount: passes.indyCount ?? inferred.indyCount,
+    mountainCollectiveCount: passes.mountainCollectiveCount ?? inferred.mountainCollectiveCount,
+    noPassCount: passes.noPassCount ?? inferred.noPassCount
+  };
+  return {
+    ...spec,
+    notes: {
+      ...spec.notes,
+      passes: nextPasses
+    }
+  };
+}
+
+function inferPassCountsFromNotes(
+  notes: string,
+  groupSize: number
+):
+  | {
+      ikonCount?: number;
+      epicCount?: number;
+      indyCount?: number;
+      mountainCollectiveCount?: number;
+      noPassCount?: number;
+    }
+  | null {
+  const text = notes.toLowerCase();
+  if (!text.trim()) return null;
+
+  const result: {
+    ikonCount?: number;
+    epicCount?: number;
+    indyCount?: number;
+    mountainCollectiveCount?: number;
+    noPassCount?: number;
+  } = {};
+
+  const hasNoPassPhrase = /\b(no pass|no passes|without passes?|none have passes?)\b/.test(text);
+  if (hasNoPassPhrase) {
+    result.noPassCount = groupSize;
+    return result;
+  }
+
+  const passPatterns: Array<{ key: keyof typeof result; tokens: RegExp[] }> = [
+    { key: "ikonCount", tokens: [/\bikon\b/] },
+    { key: "epicCount", tokens: [/\bepic\b/] },
+    { key: "indyCount", tokens: [/\bindy\b/] },
+    { key: "mountainCollectiveCount", tokens: [/\bmountain collective\b/] }
+  ];
+
+  let assigned = 0;
+  for (const pattern of passPatterns) {
+    if (!pattern.tokens.some((token) => token.test(text))) continue;
+    const count = inferCountNearToken(text, pattern.key.replace("Count", "").toLowerCase(), groupSize);
+    if (typeof count === "number") {
+      result[pattern.key] = count;
+      assigned += count;
+    }
+  }
+
+  if (assigned === 0) return null;
+  if (assigned < groupSize && /\b(rest|remaining)\b/.test(text) && /\bno pass|no passes\b/.test(text)) {
+    result.noPassCount = Math.max(0, groupSize - assigned);
+  } else if (assigned < groupSize && /\bhalf\b/.test(text)) {
+    result.noPassCount = Math.max(0, groupSize - assigned);
+  }
+
+  if (assigned >= groupSize) {
+    normalizePassCountTotals(result, groupSize);
+  }
+  return result;
+}
+
+function inferCountNearToken(text: string, tokenLabel: string, groupSize: number): number | null {
+  const directNumberBefore = new RegExp(`(\\d+)\\s+(?:of\\s+the\\s+group\\s+)?(?:have\\s+)?${escapeRegExp(tokenLabel)}`, "i");
+  const directNumberAfter = new RegExp(`${escapeRegExp(tokenLabel)}(?:\\s+passes?)?.{0,24}?(\\d+)`, "i");
+  const halfPattern = new RegExp(`(?:half|1\\/2)\\s+(?:of\\s+the\\s+group\\s+)?(?:has|have)?\\s*${escapeRegExp(tokenLabel)}`, "i");
+  const everyonePattern = new RegExp(`(?:everyone|all|entire group).{0,16}${escapeRegExp(tokenLabel)}`, "i");
+
+  if (everyonePattern.test(text)) return groupSize;
+  if (halfPattern.test(text)) return Math.round(groupSize / 2);
+
+  const before = text.match(directNumberBefore);
+  if (before) return clampCount(Number(before[1]), groupSize);
+
+  const after = text.match(directNumberAfter);
+  if (after) return clampCount(Number(after[1]), groupSize);
+
+  return null;
+}
+
+function normalizePassCountTotals(
+  counts: {
+    ikonCount?: number;
+    epicCount?: number;
+    indyCount?: number;
+    mountainCollectiveCount?: number;
+    noPassCount?: number;
+  },
+  groupSize: number
+): void {
+  const keys: Array<keyof typeof counts> = [
+    "ikonCount",
+    "epicCount",
+    "indyCount",
+    "mountainCollectiveCount",
+    "noPassCount"
+  ];
+  let total = keys.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
+  if (total <= groupSize) return;
+
+  for (let index = keys.length - 1; index >= 0 && total > groupSize; index -= 1) {
+    const key = keys[index];
+    const current = counts[key] ?? 0;
+    if (current <= 0) continue;
+    const next = Math.max(0, current - (total - groupSize));
+    counts[key] = next;
+    total = keys.reduce((sum, itemKey) => sum + (counts[itemKey] ?? 0), 0);
+  }
+}
+
+function clampCount(value: number, groupSize: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(groupSize, Math.round(value)));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function needsTravelerPods(spec: TripSpec): boolean {

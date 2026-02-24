@@ -1,7 +1,10 @@
 import { TripSpec } from "./tripSpec";
+import { findResortByName } from "./resorts";
 
 export type ResearchLinks = {
   lodgingSearch: string;
+  airbnbSearch: string;
+  vrboSearch: string;
   carRentalCompare: string | null;
   gearSearch: string;
   grocerySearch: string;
@@ -13,6 +16,8 @@ export function buildResearchLinks(
   resortName: string,
   lodgingNightlyCap?: number | null
 ): ResearchLinks {
+  const resort = findResortByName(resortName);
+  const locationPhrase = [resort?.name ?? resortName, resort?.state ?? ""].filter(Boolean).join(", ");
   const dates = `${spec.dates.start ?? ""} to ${spec.dates.end ?? ""}`.trim();
   const lodgingBudgetHint =
     typeof lodgingNightlyCap === "number" && lodgingNightlyCap > 0
@@ -29,8 +34,8 @@ export function buildResearchLinks(
     .filter(Boolean)
     .join(" ");
   const lodgingQuery = encodeURIComponent(`${resortName} lodging ${dates}${lodgingBudgetHint} ${amenityHints}`.trim());
-  const gearQuery = encodeURIComponent(`ski rental near ${resortName}`);
-  const groceryQuery = encodeURIComponent(`grocery store near ${resortName}`);
+  const gearQuery = encodeURIComponent(`ski rental near ${locationPhrase} ski resort`);
+  const groceryQuery = encodeURIComponent(`grocery store near ${locationPhrase} ski resort`);
   const diningHints = [
     spec.diningConstraints.mustSupportTakeout ? "takeout" : "",
     spec.diningConstraints.mustBeReservable ? "reservable" : "",
@@ -40,14 +45,24 @@ export function buildResearchLinks(
   ]
     .filter(Boolean)
     .join(" ");
-  const takeoutQuery = encodeURIComponent(`restaurants near ${resortName} ${diningHints}`.trim());
+  const takeoutQuery = encodeURIComponent(`restaurants near ${locationPhrase} ski resort ${diningHints}`.trim());
   const airport = spec.travel.arrivalAirport?.trim();
-  const carQuery = encodeURIComponent(`${airport ?? resortName} car rental ${dates}`);
+  const carQuery = encodeURIComponent(`${airport ? `${airport} airport` : locationPhrase} car rental ${dates}`.trim());
+  const guestCount = spec.group.size ?? 4;
+  const airbnbQuery = new URLSearchParams({
+    query: `${resortName}`,
+    adults: String(Math.max(1, guestCount)),
+    check_in: spec.dates.start ?? "",
+    check_out: spec.dates.end ?? ""
+  });
+  const vrboQuery = encodeURIComponent(`${resortName} vacation rental ${dates} ${guestCount} guests`);
 
   return {
     lodgingSearch: `https://www.google.com/travel/hotels?q=${lodgingQuery}`,
+    airbnbSearch: `https://www.airbnb.com/s/${encodeURIComponent(resortName)}/homes?${airbnbQuery.toString()}`,
+    vrboSearch: `https://www.vrbo.com/search/keywords:${vrboQuery}`,
     carRentalCompare: shouldCompareCars(spec)
-      ? `https://www.google.com/travel/cars?qs=${carQuery}`
+      ? `https://www.google.com/maps/search/?api=1&query=${carQuery}`
       : null,
     gearSearch: `https://www.google.com/maps/search/?api=1&query=${gearQuery}`,
     grocerySearch: `https://www.google.com/maps/search/?api=1&query=${groceryQuery}`,
