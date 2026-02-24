@@ -1,0 +1,180 @@
+import { Response, Router } from "express";
+import { createSessionCookie, readSessionId } from "../../http/sessionCookie";
+import {
+  bootstrapTripChat,
+  bootstrapTripSplitwise,
+  createTrip,
+  getTrip,
+  patchTripSpec,
+  refreshTripOptions
+} from "../../services/tripService";
+import { TripSpecPatchSchema } from "../../core/tripSpec";
+import { loadConversationByTripId } from "../../conversations/sessionService";
+import { exportSheetsForLoadedConversation, HttpRouteError } from "../../services/sheetsExportService";
+import { expandItinerary } from "../../core/itineraryExpansion";
+import { getConversationStore } from "../../adapters/persistence";
+
+export const tripsRouter = Router();
+
+async function respondWithTripAction(
+  res: Response,
+  tripId: string,
+  action: (tripId: string) => Promise<Awaited<ReturnType<typeof bootstrapTripChat>>>,
+  notFoundMessage: string,
+  failureMessage: string
+) {
+  try {
+    const trip = await action(tripId);
+    if (!trip) {
+      res.status(404).json({ error: notFoundMessage });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: failureMessage });
+  }
+}
+
+tripsRouter.post("/", async (req, res) => {
+  try {
+    const sessionId = readSessionId(req.headers.cookie) ?? req.body?.sessionId ?? null;
+    const trip = await createTrip(sessionId);
+    if (trip.sessionId) {
+      res.setHeader("Set-Cookie", createSessionCookie(trip.sessionId));
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to create trip." });
+  }
+});
+
+tripsRouter.patch("/:tripId/spec", async (req, res) => {
+  try {
+    const parse = TripSpecPatchSchema.safeParse(req.body ?? {});
+    if (!parse.success) {
+      res.status(400).json({ error: "Invalid trip patch." });
+      return;
+    }
+    const trip = await patchTripSpec(req.params.tripId, parse.data);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to patch trip spec." });
+  }
+});
+
+tripsRouter.post("/:tripId/options/refresh", async (req, res) => {
+  try {
+    const trip = await refreshTripOptions(req.params.tripId);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to refresh trip options." });
+  }
+});
+
+tripsRouter.get("/:tripId/options", async (req, res) => {
+  try {
+    const trip = await getTrip(req.params.tripId);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json({
+      tripId: trip.tripId,
+      tripSpec: trip.tripSpec,
+      decisionPackage: trip.decisionPackage
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load trip options." });
+  }
+});
+
+tripsRouter.post("/:tripId/itineraries/:itineraryId/expand", async (req, res) => {
+  try {
+    const loaded = await loadConversationByTripId(req.params.tripId);
+    if (!loaded) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+
+    const decision = loaded.conversation.decisionPackage;
+    if (!decision) {
+      res.status(400).json({ error: "No itinerary available." });
+      return;
+    }
+
+    const itinerary = decision.itineraries.find((item) => item.id === req.params.itineraryId);
+    if (!itinerary) {
+      res.status(404).json({ error: "Itinerary not found." });
+      return;
+    }
+
+    const content = expandItinerary(loaded.conversation.tripSpec, itinerary, decision.poiResults);
+    const store = getConversationStore();
+    const message = { role: "assistant" as const, content };
+    await store.appendMessages(loaded.conversation.id, [message]);
+
+    res.json({
+      tripId: loaded.conversation.id,
+      messages: [...loaded.messages, message],
+      decisionPackage: decision,
+      sheetUrl: loaded.conversation.sheetUrl ?? null,
+      googleLinked: loaded.googleLinked
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to expand itinerary." });
+  }
+});
+
+tripsRouter.post("/:tripId/integrations/splitwise/bootstrap", async (req, res) => {
+  await respondWithTripAction(
+    res,
+    req.params.tripId,
+    bootstrapTripSplitwise,
+    "Trip not found.",
+    "Failed to bootstrap Splitwise."
+  );
+});
+
+tripsRouter.post("/:tripId/integrations/chat/bootstrap", async (req, res) => {
+  await respondWithTripAction(
+    res,
+    req.params.tripId,
+    bootstrapTripChat,
+    "Trip not found.",
+    "Failed to bootstrap chat."
+  );
+});
+
+tripsRouter.post("/:tripId/export/sheets", async (req, res) => {
+  try {
+    const loaded = await loadConversationByTripId(req.params.tripId);
+    if (!loaded) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+
+    const payload = await exportSheetsForLoadedConversation(loaded);
+    res.json({ sheetUrl: payload.sheetUrl, decisionPackage: payload.decisionPackage });
+  } catch (error) {
+    if (error instanceof HttpRouteError) {
+      res.status(error.status).json(error.body);
+      return;
+    }
+    console.error(error);
+    res.status(500).json({ error: "Failed to export trip sheet." });
+  }
+});

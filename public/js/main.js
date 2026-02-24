@@ -3,12 +3,12 @@ import {
   bootstrapTripChat,
   createTripRecord,
   exportTripSheets,
+  fetchFieldLabels,
   fetchSession,
   patchTripSpec,
   refreshTripOptions,
   requestItineraryExpansion,
   requestNewChat,
-  requestSheetsExport,
   sendChatMessage
 } from "./session.js";
 import { createRenderer } from "./renderers.js";
@@ -34,6 +34,7 @@ const state = {
 
 let googleStatus = null;
 let googleReason = null;
+const sharedFieldLabels = {};
 
 const renderer = createRenderer({
   chat,
@@ -47,11 +48,17 @@ const renderer = createRenderer({
   onRefresh: handleRefreshOptions,
   onLock: handleLockItinerary,
   onBootstrapSplitwise: handleBootstrapSplitwise,
-  onBootstrapChat: handleBootstrapChat
+  onBootstrapChat: handleBootstrapChat,
+  fieldLabels: sharedFieldLabels
 });
 
 export async function initApp() {
   parseGoogleStatus();
+  try {
+    Object.assign(sharedFieldLabels, await fetchFieldLabels());
+  } catch (error) {
+    console.warn("Failed to load field labels", error);
+  }
   const data = await fetchSession();
   sessionId = data.sessionId ?? null;
   tripId = data.tripId ?? null;
@@ -166,8 +173,9 @@ async function startNewChat() {
 }
 
 async function expandItinerary(itineraryId) {
+  if (!tripId) return;
   try {
-    const data = await requestItineraryExpansion(sessionId, itineraryId);
+    const data = await requestItineraryExpansion(tripId, itineraryId);
     if (data.messages) {
       renderer.renderMessages(data.messages);
     } else if (data.reply) {
@@ -188,7 +196,8 @@ async function exportToSheets() {
   }
 
   try {
-    const data = state.tripId ? await exportTripSheets(state.tripId) : await requestSheetsExport(sessionId);
+    if (!state.tripId) throw new Error("Missing trip.");
+    const data = await exportTripSheets(state.tripId);
     if (data.sheetUrl) {
       state.sheetUrl = data.sheetUrl;
       renderer.renderActions(state);

@@ -1,4 +1,4 @@
-import { PriceSource } from "../../integrations/serpPricing";
+import { PriceSource } from "../../adapters/integrations/serpPricing";
 
 export type BudgetComponentKey = "pass" | "travel" | "food" | "gear_rental" | "housing";
 

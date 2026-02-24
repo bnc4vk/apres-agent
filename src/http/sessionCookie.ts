@@ -1,5 +1,5 @@
 import cookie from "cookie";
-import { appConfig, isSecureCookie } from "../config/appConfig";
+import { isSecureCookie } from "../config/appConfig";
 import { createSignedValue, readSignedValue } from "../security/signing";
 
 export const SESSION_COOKIE_NAME = "apres_session";

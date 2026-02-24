@@ -18,6 +18,7 @@ async function run() {
   const { buildDecisionPackage } = await import("../src/core/decision");
   const { createEmptyTripSpec, determineMissingFields, mergeTripSpec } = await import("../src/core/tripSpec");
   const { createSession, handleUserMessage } = await import("../src/conversations/engine");
+  const { loadConversationByTripId } = await import("../src/conversations/sessionService");
   const { app } = await import("../src/app");
 
   testMissingFields({ createEmptyTripSpec, determineMissingFields, mergeTripSpec });
@@ -33,7 +34,7 @@ async function run() {
   await testAssumptionFlow({ createSession, handleUserMessage });
   await testAssumptionAcceptanceResolution({ createSession, handleUserMessage });
   await testApi({ app });
-  await testTripApis({ app });
+  await testTripApis({ app, loadConversationByTripId });
   console.log("All tests passed.");
 }
 
@@ -306,10 +307,14 @@ async function testApi(deps: any) {
   const blockedOAuthRes = await request(app).get("/api/auth/google/callback?error=access_denied");
   assert.equal(blockedOAuthRes.status, 302);
   assert.ok(String(blockedOAuthRes.headers.location).includes("google=blocked"));
+
+  const labelsRes = await request(app).get("/api/meta/field-labels");
+  assert.equal(labelsRes.status, 200);
+  assert.equal(labelsRes.body.fieldLabels?.dates, "Dates");
 }
 
 async function testTripApis(deps: any) {
-  const { app } = deps;
+  const { app, loadConversationByTripId } = deps;
   const sessionRes = await request(app).get("/api/session");
   const sessionId = sessionRes.body.sessionId as string;
   assert.ok(sessionId);
@@ -331,6 +336,11 @@ async function testTripApis(deps: any) {
   assert.equal(tripCreate.status, 200);
   const tripId = tripCreate.body.tripId as string;
   assert.ok(tripId);
+
+  const loadedByTrip = await loadConversationByTripId(tripId);
+  assert.ok(loadedByTrip);
+  assert.equal(loadedByTrip?.sessionId, sessionId);
+  assert.equal(loadedByTrip?.session.id, loadedByTrip?.conversation.sessionPk);
 
   const patchRes = await request(app)
     .patch(`/api/trips/${tripId}/spec`)
@@ -357,6 +367,14 @@ async function testTripApis(deps: any) {
   const refreshRes = await request(app).post(`/api/trips/${tripId}/options/refresh`);
   assert.equal(refreshRes.status, 200);
   assert.ok(Array.isArray(refreshRes.body.decisionPackage?.decisionMatrix));
+  const firstItineraryId = refreshRes.body.decisionPackage?.itineraries?.[0]?.id;
+  assert.ok(firstItineraryId);
+
+  const expandRes = await request(app).post(
+    `/api/trips/${tripId}/itineraries/${encodeURIComponent(firstItineraryId)}/expand`
+  );
+  assert.equal(expandRes.status, 200);
+  assert.ok(Array.isArray(expandRes.body.messages));
 
   const lockRes = await request(app).patch(`/api/trips/${tripId}/spec`).send({
     locks: {

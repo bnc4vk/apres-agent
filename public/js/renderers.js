@@ -1,17 +1,3 @@
-const fieldLabels = {
-  dates: "Dates",
-  group_size: "Group size",
-  skill_levels: "Skill levels",
-  gear_rental: "Gear rentals",
-  budget: "Budget",
-  passes: "Pass ownership",
-  travel_restrictions: "Travel restrictions",
-  location_input: "Location",
-  traveler_pods: "Departure pods",
-  lodging_constraints: "Lodging constraints",
-  dining_constraints: "Dining constraints"
-};
-
 export function createRenderer({
   chat,
   actions,
@@ -24,7 +10,8 @@ export function createRenderer({
   onRefresh,
   onLock,
   onBootstrapSplitwise,
-  onBootstrapChat
+  onBootstrapChat,
+  fieldLabels = {}
 }) {
   function addMessage(role, content) {
     const bubble = document.createElement("div");

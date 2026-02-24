@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { fetchLiveFlightPrice, fetchLiveHotelNightlyPrice, PriceSource } from "../../integrations/serpPricing";
+import { fetchLiveFlightPrice, fetchLiveHotelNightlyPrice, PriceSource } from "../../adapters/integrations/serpPricing";
 import { findResortByName, Resort } from "../resorts";
 import { TripSpec } from "../tripSpec";
 import { fallbackFlightPrice, resolveOriginAirport } from "./origins";

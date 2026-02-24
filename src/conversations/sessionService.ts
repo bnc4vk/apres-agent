@@ -1,7 +1,7 @@
 import { ChatSession } from "./engine";
-import { getConversationStore } from "../persistence";
+import { getConversationStore } from "../adapters/persistence";
 import { WELCOME_MESSAGE } from "./welcome";
-import { ConversationSnapshot } from "../persistence/store";
+import { ConversationSnapshot } from "../adapters/persistence/store";
 import { createEmptyTripSpec } from "../core/tripSpec";
 
 export type LoadedConversation = ConversationSnapshot & {
@@ -35,15 +35,14 @@ export async function loadConversationByTripId(tripId: string): Promise<LoadedCo
   const store = getConversationStore();
   const conversation = await store.getConversationById(tripId);
   if (!conversation) return null;
+  const session = await store.getSessionByPk(conversation.sessionPk);
+  if (!session) return null;
   const messages = await store.listMessages(conversation.id);
   const googleLinked = await store.getGoogleLinked(conversation.sessionPk);
 
   return {
-    session: {
-      id: conversation.sessionPk,
-      sessionId: conversation.sessionPk
-    },
-    sessionId: conversation.sessionPk,
+    session,
+    sessionId: session.sessionId,
     conversation,
     messages,
     googleLinked

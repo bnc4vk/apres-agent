@@ -3,6 +3,13 @@ export async function fetchSession() {
   return response.json();
 }
 
+export async function fetchFieldLabels() {
+  const response = await fetch("/api/meta/field-labels");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to load field labels.");
+  return data.fieldLabels ?? {};
+}
+
 export async function sendChatMessage(sessionId, message) {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -25,25 +32,15 @@ export async function requestNewChat(sessionId) {
   return data;
 }
 
-export async function requestItineraryExpansion(sessionId, itineraryId) {
-  const response = await fetch("/api/itinerary/expand", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, itineraryId })
-  });
+export async function requestItineraryExpansion(tripId, itineraryId) {
+  const response = await fetch(
+    `/api/trips/${encodeURIComponent(tripId)}/itineraries/${encodeURIComponent(itineraryId)}/expand`,
+    {
+      method: "POST"
+    }
+  );
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Failed to expand itinerary.");
-  return data;
-}
-
-export async function requestSheetsExport(sessionId) {
-  const response = await fetch("/api/export/sheets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId })
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Failed to export.");
   return data;
 }
 

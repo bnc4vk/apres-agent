@@ -3,7 +3,7 @@ import { buildItineraries, ItineraryPlan } from "./itinerary";
 import { TripSpec } from "./tripSpec";
 import { runBudgetGraph, BudgetSummary } from "./budgetGraph";
 import { buildResearchLinks } from "./researchLinks";
-import { getCarProvider, getLodgingProvider } from "../providers";
+import { getCarProvider, getLodgingProvider } from "../adapters/providers";
 import { CarOption, LodgingOption } from "./supply";
 import { buildOpsBoard, OpsBoard } from "./opsBoard";
 

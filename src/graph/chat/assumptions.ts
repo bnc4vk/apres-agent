@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { ChatMessage } from "../../llm/types";
 import { PendingSpecAssumption, TripSpec, TripSpecPatch } from "../../core/tripSpec";
+import { getFieldLabel } from "../../shared/fieldLabels";
 
 export function shouldOfferAssumptionMode(messages: ChatMessage[], missingFields: string[]): boolean {
   if (missingFields.length === 0) return false;
@@ -157,20 +158,7 @@ function nextFridayWindow(): { start: string; end: string } {
 }
 
 export function fieldLabel(field: string): string {
-  const labels: Record<string, string> = {
-    dates: "Dates",
-    group_size: "Group size",
-    skill_levels: "Skill levels",
-    gear_rental: "Gear rentals",
-    budget: "Budget",
-    passes: "Pass ownership",
-    travel_restrictions: "Travel restrictions",
-    location_input: "Location preference",
-    traveler_pods: "Departure locations",
-    lodging_constraints: "Lodging constraints",
-    dining_constraints: "Dining constraints"
-  };
-  return labels[field] ?? field;
+  return getFieldLabel(field);
 }
 
 export function assumptionLabel(field: string): string {

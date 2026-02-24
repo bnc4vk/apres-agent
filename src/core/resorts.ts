@@ -1,5 +1,3 @@
-import { TripSpec } from "./tripSpec";
-
 export type Resort = {
   id: string;
   name: string;

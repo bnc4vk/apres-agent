@@ -1,4 +1,4 @@
-import { getPoiProvider } from "../providers";
+import { getPoiProvider } from "../adapters/providers";
 import { PoiBundle, PoiOption } from "./supply";
 import { TripSpec } from "./tripSpec";
 

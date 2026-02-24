@@ -9,11 +9,10 @@ import {
   toChatSession
 } from "./conversations/sessionService";
 import { clearSessionCookie, createSessionCookie, readSessionId } from "./http/sessionCookie";
-import { getConversationStore } from "./persistence";
-import { googleAuthRouter } from "./routes/googleAuth";
-import { sheetsExportRouter } from "./routes/sheetsExport";
-import { itineraryRouter } from "./routes/itinerary";
-import { tripsRouter } from "./routes/trips";
+import { getConversationStore } from "./adapters/persistence";
+import { googleAuthRouter } from "./api/routes/googleAuth";
+import { metaRouter } from "./api/routes/meta";
+import { tripsRouter } from "./api/routes/trips";
 
 export const app = express();
 
@@ -24,8 +23,7 @@ const publicDir = path.join(__dirname, "..", "public");
 app.use(express.json());
 app.use(express.static(publicDir));
 app.use("/api/auth/google", googleAuthRouter);
-app.use("/api/export", sheetsExportRouter);
-app.use("/api/itinerary", itineraryRouter);
+app.use("/api/meta", metaRouter);
 app.use("/api/trips", tripsRouter);
 
 app.post("/api/chat", async (req, res) => {
