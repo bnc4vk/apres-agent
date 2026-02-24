@@ -42,6 +42,10 @@ export class MemoryConversationStore implements ConversationStore {
     return conversation;
   }
 
+  async getConversationById(conversationId: string): Promise<StoredConversation | null> {
+    return this.conversations.get(conversationId) ?? null;
+  }
+
   async listMessages(conversationId: string): Promise<ChatTurn[]> {
     return this.messages.get(conversationId) ?? [];
   }

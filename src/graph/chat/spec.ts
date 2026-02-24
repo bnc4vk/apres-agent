@@ -68,5 +68,38 @@ export function autoConfirm(spec: TripSpec): TripSpec {
     updated.notes = { ...updated.notes, passes: { ...passes, confirmed: true } };
   }
 
+  const lodgingProvided = Boolean(
+    typeof updated.lodgingConstraints.maxWalkMinutesToLift === "number" ||
+      typeof updated.lodgingConstraints.hotTubRequired === "boolean" ||
+      typeof updated.lodgingConstraints.laundryRequired === "boolean" ||
+      typeof updated.lodgingConstraints.minBedrooms === "number" ||
+      typeof updated.lodgingConstraints.kitchenRequired === "boolean"
+  );
+  if (lodgingProvided && updated.lodgingConstraints.confirmed !== true) {
+    updated.lodgingConstraints = {
+      ...updated.lodgingConstraints,
+      confirmed: true
+    };
+  }
+
+  const diningProvided = Boolean(
+    typeof updated.diningConstraints.mustSupportTakeout === "boolean" ||
+      typeof updated.diningConstraints.minGroupCapacity === "number" ||
+      typeof updated.diningConstraints.mustBeReservable === "boolean"
+  );
+  if (diningProvided && updated.diningConstraints.confirmed !== true) {
+    updated.diningConstraints = {
+      ...updated.diningConstraints,
+      confirmed: true
+    };
+  }
+
+  const organizerOpsProvided =
+    typeof updated.organizerOps.wantsGroupChatSetup === "boolean" ||
+    typeof updated.organizerOps.wantsSplitwiseSetup === "boolean";
+  if (organizerOpsProvided && updated.organizerOps.confirmed !== true) {
+    updated.organizerOps = { ...updated.organizerOps, confirmed: true };
+  }
+
   return updateTripSpecStatus(updated);
 }

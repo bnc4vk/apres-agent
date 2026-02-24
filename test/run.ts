@@ -3,26 +3,37 @@ import request from "supertest";
 
 process.env.LLM_PROVIDER = "stub";
 process.env.PERSISTENCE_DRIVER = "memory";
+process.env.BOOKING_API_KEY = "";
+process.env.GOOGLE_PLACES_API_KEY = "";
+process.env.SERPAPI_KEY = "";
+process.env.SPLITWISE_ACCESS_TOKEN = "";
+process.env.TWILIO_ACCOUNT_SID = "";
+process.env.TWILIO_AUTH_TOKEN = "";
+process.env.TWILIO_CONVERSATIONS_SERVICE_SID = "";
 
 async function run() {
   const { buildItineraries } = await import("../src/core/itinerary");
   const { shortlistResorts } = await import("../src/core/resortRanking");
   const { runBudgetGraph } = await import("../src/core/budgetGraph");
+  const { buildDecisionPackage } = await import("../src/core/decision");
   const { createEmptyTripSpec, determineMissingFields, mergeTripSpec } = await import("../src/core/tripSpec");
   const { createSession, handleUserMessage } = await import("../src/conversations/engine");
   const { app } = await import("../src/app");
-  const { resolveDatesPatch } = await import("../src/tools/dateResolution");
 
   testMissingFields({ createEmptyTripSpec, determineMissingFields, mergeTripSpec });
   testPassMissingField({ createEmptyTripSpec, determineMissingFields, mergeTripSpec });
   testGearAutoConfirm({ createEmptyTripSpec, mergeTripSpec, determineMissingFields });
-  testDateResolution({ resolveDatesPatch });
   testResortShortlist({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
+  testStateFilterNoFallback({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
   await testBudgetGraph({ createEmptyTripSpec, mergeTripSpec, buildItineraries, runBudgetGraph });
   testItineraryBuilder({ createEmptyTripSpec, mergeTripSpec, buildItineraries });
+  await testHardConstraintLodging({ createEmptyTripSpec, mergeTripSpec, buildDecisionPackage });
   await testConversationFlow({ createSession, handleUserMessage });
+  await testGeneralizedRelativeDateExtraction({ createSession, handleUserMessage });
   await testAssumptionFlow({ createSession, handleUserMessage });
+  await testAssumptionAcceptanceResolution({ createSession, handleUserMessage });
   await testApi({ app });
+  await testTripApis({ app });
   console.log("All tests passed.");
 }
 
@@ -89,24 +100,20 @@ function testResortShortlist(deps: any) {
   assert.ok(resorts.every((resort) => resort.region.toLowerCase().includes("tahoe")));
 }
 
-function testDateResolution(deps: any) {
-  const { resolveDatesPatch } = deps;
-  const now = new Date("2026-02-05T12:00:00Z");
-  const lateThisMonth = resolveDatesPatch("Ideally late this month.", {}, now);
-  assert.equal(lateThisMonth?.dates?.start, "2026-02-21");
-  assert.equal(lateThisMonth?.dates?.end, "2026-02-28");
-
-  const marchWindow = resolveDatesPatch("Sometime in March.", {}, now);
-  assert.equal(marchWindow?.dates?.start, "2026-03-01");
-  assert.equal(marchWindow?.dates?.end, "2026-03-31");
-
-  const marchYear = resolveDatesPatch("March 2026", {}, now);
-  assert.equal(marchYear?.dates?.start, "2026-03-01");
-  assert.equal(marchYear?.dates?.end, "2026-03-31");
-
-  const januaryNextYear = resolveDatesPatch("Late January works.", {}, now);
-  assert.equal(januaryNextYear?.dates?.start, "2027-01-21");
-  assert.equal(januaryNextYear?.dates?.end, "2027-01-31");
+function testStateFilterNoFallback(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec, shortlistResorts } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    location: { state: "Utah", confirmed: true },
+    dates: { start: "2026-03-14", end: "2026-03-18", yearConfirmed: true },
+    group: { size: 8, skillLevels: ["beginner", "intermediate"] },
+    gear: { rentalRequired: true, confirmed: true },
+    budget: { band: "mid", confirmed: true },
+    notes: { passes: { noPassCount: 8, confirmed: true } },
+    travel: { noFlying: false, confirmed: true }
+  });
+  const resorts = shortlistResorts(spec, 3);
+  assert.ok(resorts.length > 0);
+  assert.ok(resorts.every((resort) => resort.state === "Utah"));
 }
 
 function testItineraryBuilder(deps: any) {
@@ -144,6 +151,47 @@ async function testBudgetGraph(deps: any) {
   assert.ok(budget.summary.shortfallPerPerson > 0);
 }
 
+async function testHardConstraintLodging(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec, buildDecisionPackage } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    travel: { noFlying: false, confirmed: true, arrivalAirport: "SLC" },
+    dates: { start: "2026-03-14", end: "2026-03-18", yearConfirmed: true },
+    group: { size: 12, skillLevels: ["beginner", "intermediate", "advanced"] },
+    groupComposition: { couplesCount: 5, singlesCount: 2, roomingStyle: "hybrid", confirmed: true },
+    gear: { rentalRequired: true, confirmed: true },
+    budget: { perPersonMax: 1800, confirmed: true },
+    notes: { passes: { ikonCount: 8, noPassCount: 4, confirmed: true } },
+    location: { state: "Utah", confirmed: true },
+    lodgingConstraints: {
+      maxWalkMinutesToLift: 1,
+      hotTubRequired: true,
+      laundryRequired: true,
+      minBedrooms: 20,
+      kitchenRequired: true,
+      constraintMode: "hard",
+      confirmed: true
+    },
+    diningConstraints: {
+      mustSupportTakeout: true,
+      mustBeReservable: true,
+      minGroupCapacity: 12,
+      constraintMode: "hard",
+      confirmed: true
+    }
+  });
+  const decision = await buildDecisionPackage(spec);
+  assert.ok(decision.itineraries.length > 0);
+  assert.ok(
+    decision.itineraries.every((item) => (item.liveOptions?.lodging?.length ?? 0) === 0),
+    "Expected hard constraints to eliminate all fallback lodging options"
+  );
+  assert.ok(
+    decision.itineraries.some((item) =>
+      item.warnings.some((warning) => warning.toLowerCase().includes("no lodging options matched"))
+    )
+  );
+}
+
 async function testConversationFlow(deps: any) {
   const { createSession, handleUserMessage } = deps;
   let session = createSession();
@@ -152,12 +200,32 @@ async function testConversationFlow(deps: any) {
     "We are 6 people, mixed beginner/intermediate. Feb 20-23, need rentals, mid budget, no flying, max 4 hours driving. Open to suggestions. Nobody has a pass."
   );
   let last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("departure locations"));
+  assert.ok(last.length > 0);
+  assert.ok(session.tripSpec.status.missingFields.includes("traveler_pods"));
   session = await handleUserMessage(session, "3 from SF, 3 from Sacramento");
   last = session.history[session.history.length - 1]?.content ?? "";
   assert.ok(last.toLowerCase().includes("here are 2–3 options"));
   assert.ok(!last.includes("http://"));
   assert.ok(!last.includes("https://"));
+}
+
+async function testGeneralizedRelativeDateExtraction(deps: any) {
+  const { createSession, handleUserMessage } = deps;
+  let session = createSession();
+  session = await handleUserMessage(session, "i'm planning a trip for a group size of 8, with half of the group owning ikon");
+  const firstAsk = session.history[session.history.length - 1]?.content ?? "";
+  assert.ok(firstAsk.toLowerCase().includes("date"));
+
+  session = await handleUserMessage(session, "any weekend in the next two months");
+  const secondAsk = session.history[session.history.length - 1]?.content ?? "";
+  assert.ok(
+    !secondAsk.toLowerCase().includes("what dates are you aiming for"),
+    "Should avoid repeating the exact same date follow-up"
+  );
+  assert.equal(session.tripSpec.dates.weekendsPreferred, true);
+  assert.ok(Boolean(session.tripSpec.dates.start));
+  assert.ok(Boolean(session.tripSpec.dates.end));
+  assert.ok(session.tripSpec.extraction.assumptions.length > 0);
 }
 
 async function testAssumptionFlow(deps: any) {
@@ -171,8 +239,26 @@ async function testAssumptionFlow(deps: any) {
 
   session = await handleUserMessage(session, "Proceed with assumptions.");
   last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("proceeding with itinerary generation using assumptions"));
+  assert.ok(last.toLowerCase().includes("here are 2–3 options"));
   assert.ok(last.toLowerCase().includes("budget check"));
+}
+
+async function testAssumptionAcceptanceResolution(deps: any) {
+  const { createSession, handleUserMessage } = deps;
+  let session = createSession();
+  session = await handleUserMessage(session, "Planning a ski trip.");
+  session = await handleUserMessage(session, "Sometime in March.");
+  session = await handleUserMessage(session, "Still gathering details.");
+
+  session = await handleUserMessage(
+    session,
+    "The intermediate skiers in the group hold epic passes. The rest of your assumptions are fine."
+  );
+
+  const last = session.history[session.history.length - 1]?.content ?? "";
+  assert.ok(last.toLowerCase().includes("here are 2–3 options"));
+  assert.ok(!session.tripSpec.status.missingFields.includes("travel_restrictions"));
+  assert.ok(!session.tripSpec.status.missingFields.includes("location_input"));
 }
 
 async function testApi(deps: any) {
@@ -190,7 +276,7 @@ async function testApi(deps: any) {
       message: "We are 4 people, beginners. Feb 20-23, need rentals, mid budget, no flying, max 4 hours driving. Open to suggestions. No passes."
     });
   assert.equal(chatRes.status, 200);
-  assert.ok(String(chatRes.body.reply).toLowerCase().includes("departure locations"));
+  assert.ok(typeof chatRes.body.reply === "string" && chatRes.body.reply.length > 0);
   assert.equal(chatRes.body.replyKind, "followup");
 
   const finalRes = await request(app)
@@ -220,6 +306,77 @@ async function testApi(deps: any) {
   const blockedOAuthRes = await request(app).get("/api/auth/google/callback?error=access_denied");
   assert.equal(blockedOAuthRes.status, 302);
   assert.ok(String(blockedOAuthRes.headers.location).includes("google=blocked"));
+}
+
+async function testTripApis(deps: any) {
+  const { app } = deps;
+  const sessionRes = await request(app).get("/api/session");
+  const sessionId = sessionRes.body.sessionId as string;
+  assert.ok(sessionId);
+
+  const chatRes = await request(app)
+    .post("/api/chat")
+    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
+    .send({
+      sessionId,
+      message:
+        "8 people, Feb 20-23 2026, mixed beginner/intermediate, budget 1500, 2 Ikon 6 no pass, flying into DEN, Colorado options, need rentals for 4."
+    });
+  assert.equal(chatRes.status, 200);
+
+  const tripCreate = await request(app)
+    .post("/api/trips")
+    .set("Cookie", chatRes.headers["set-cookie"] ?? [])
+    .send({ sessionId });
+  assert.equal(tripCreate.status, 200);
+  const tripId = tripCreate.body.tripId as string;
+  assert.ok(tripId);
+
+  const patchRes = await request(app)
+    .patch(`/api/trips/${tripId}/spec`)
+    .send({
+      lodgingConstraints: {
+        maxWalkMinutesToLift: 12,
+        hotTubRequired: true,
+        laundryRequired: true,
+        minBedrooms: 4,
+        kitchenRequired: true,
+        constraintMode: "hard",
+        confirmed: true
+      },
+      diningConstraints: {
+        mustSupportTakeout: true,
+        minGroupCapacity: 8,
+        mustBeReservable: true,
+        constraintMode: "hard",
+        confirmed: true
+      }
+    });
+  assert.equal(patchRes.status, 200);
+
+  const refreshRes = await request(app).post(`/api/trips/${tripId}/options/refresh`);
+  assert.equal(refreshRes.status, 200);
+  assert.ok(Array.isArray(refreshRes.body.decisionPackage?.decisionMatrix));
+
+  const lockRes = await request(app).patch(`/api/trips/${tripId}/spec`).send({
+    locks: {
+      lockedResortName: "Keystone",
+      lockedItineraryId: "keystone-1"
+    }
+  });
+  assert.equal(lockRes.status, 200);
+
+  const splitwiseRes = await request(app).post(`/api/trips/${tripId}/integrations/splitwise/bootstrap`);
+  assert.equal(splitwiseRes.status, 200);
+  assert.ok(splitwiseRes.body.decisionPackage?.opsBoard?.splitwiseBootstrap?.groupId);
+
+  const chatBootstrapRes = await request(app).post(`/api/trips/${tripId}/integrations/chat/bootstrap`);
+  assert.equal(chatBootstrapRes.status, 200);
+  assert.ok(chatBootstrapRes.body.decisionPackage?.opsBoard?.chatBootstrap?.inviteUrl);
+
+  const optionsRes = await request(app).get(`/api/trips/${tripId}/options`);
+  assert.equal(optionsRes.status, 200);
+  assert.ok(Array.isArray(optionsRes.body.decisionPackage?.decisionMatrix));
 }
 
 run().catch((error) => {

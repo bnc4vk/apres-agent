@@ -35,6 +35,7 @@ itineraryRouter.post("/expand", async (req, res) => {
 
     res.setHeader("Set-Cookie", createSessionCookie(loaded.sessionId));
     res.json({
+      tripId: loaded.conversation.id,
       messages: [...loaded.messages, message],
       decisionPackage: decision,
       sheetUrl: loaded.conversation.sheetUrl ?? null,

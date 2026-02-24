@@ -104,6 +104,48 @@ export const RESORTS: Resort[] = [
     seasonMonths: [11, 12, 1, 2, 3, 4],
     monthlySnowInches: { 11: 26, 12: 32, 1: 35, 2: 32, 3: 30, 4: 19 },
     monthlyAvgTempF: { 11: 29, 12: 21, 1: 20, 2: 21, 3: 25, 4: 33 }
+  },
+  {
+    id: "park-city",
+    name: "Park City",
+    region: "Wasatch",
+    state: "Utah",
+    passPrograms: ["epic"],
+    nearestAirport: "SLC",
+    lat: 40.6514,
+    lng: -111.5072,
+    terrain: { beginner: 0.18, intermediate: 0.42, advanced: 0.28, expert: 0.12 },
+    seasonMonths: [11, 12, 1, 2, 3, 4],
+    monthlySnowInches: { 11: 28, 12: 46, 1: 52, 2: 50, 3: 44, 4: 28 },
+    monthlyAvgTempF: { 11: 36, 12: 30, 1: 27, 2: 30, 3: 36, 4: 44 }
+  },
+  {
+    id: "deer-valley",
+    name: "Deer Valley",
+    region: "Wasatch",
+    state: "Utah",
+    passPrograms: ["ikon"],
+    nearestAirport: "SLC",
+    lat: 40.6196,
+    lng: -111.4783,
+    terrain: { beginner: 0.27, intermediate: 0.41, advanced: 0.24, expert: 0.08 },
+    seasonMonths: [11, 12, 1, 2, 3, 4],
+    monthlySnowInches: { 11: 30, 12: 49, 1: 56, 2: 53, 3: 47, 4: 31 },
+    monthlyAvgTempF: { 11: 35, 12: 29, 1: 26, 2: 29, 3: 35, 4: 43 }
+  },
+  {
+    id: "snowbird",
+    name: "Snowbird",
+    region: "Wasatch",
+    state: "Utah",
+    passPrograms: ["ikon"],
+    nearestAirport: "SLC",
+    lat: 40.5808,
+    lng: -111.6572,
+    terrain: { beginner: 0.14, intermediate: 0.35, advanced: 0.32, expert: 0.19 },
+    seasonMonths: [11, 12, 1, 2, 3, 4, 5],
+    monthlySnowInches: { 11: 42, 12: 74, 1: 82, 2: 80, 3: 76, 4: 58, 5: 28 },
+    monthlyAvgTempF: { 11: 30, 12: 24, 1: 22, 2: 24, 3: 30, 4: 38, 5: 47 }
   }
 ];
 

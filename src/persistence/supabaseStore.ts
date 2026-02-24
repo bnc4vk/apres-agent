@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { supabaseAdmin } from "./supabaseClient";
 import { ConversationStore, StoredConversation, StoredSession } from "./store";
 import { ChatTurn } from "../conversations/engine";
-import { createEmptyTripSpec, TripSpec } from "../core/tripSpec";
+import { createEmptyTripSpec, normalizeTripSpec, TripSpec } from "../core/tripSpec";
 
 type SessionRow = {
   id: string;
@@ -95,6 +95,16 @@ export class SupabaseConversationStore implements ConversationStore {
     return this.mapConversation(inserted.data);
   }
 
+  async getConversationById(conversationId: string): Promise<StoredConversation | null> {
+    const existing = await supabaseAdmin
+      .from("app_conversations")
+      .select("id, session_pk, trip_spec, decision_package, sheet_url")
+      .eq("id", conversationId)
+      .maybeSingle();
+    if (!existing.data) return null;
+    return this.mapConversation(existing.data);
+  }
+
   async listMessages(conversationId: string): Promise<ChatTurn[]> {
     const response = await supabaseAdmin
       .from("app_messages")
@@ -183,7 +193,7 @@ export class SupabaseConversationStore implements ConversationStore {
     return {
       id: row.id,
       sessionPk: row.session_pk,
-      tripSpec: row.trip_spec ?? createEmptyTripSpec(),
+      tripSpec: normalizeTripSpec(row.trip_spec ?? createEmptyTripSpec()),
       decisionPackage: row.decision_package ?? null,
       sheetUrl: row.sheet_url ?? null
     };

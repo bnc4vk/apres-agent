@@ -1,17 +1,19 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { appConfig } from "./config/appConfig";
 import { handleUserMessage } from "./conversations/engine";
 import {
   loadConversation,
   resetConversationForNewChat,
   toChatSession
 } from "./conversations/sessionService";
-import { createSessionCookie, readSessionId } from "./http/sessionCookie";
+import { clearSessionCookie, createSessionCookie, readSessionId } from "./http/sessionCookie";
 import { getConversationStore } from "./persistence";
 import { googleAuthRouter } from "./routes/googleAuth";
 import { sheetsExportRouter } from "./routes/sheetsExport";
 import { itineraryRouter } from "./routes/itinerary";
+import { tripsRouter } from "./routes/trips";
 
 export const app = express();
 
@@ -24,9 +26,10 @@ app.use(express.static(publicDir));
 app.use("/api/auth/google", googleAuthRouter);
 app.use("/api/export", sheetsExportRouter);
 app.use("/api/itinerary", itineraryRouter);
+app.use("/api/trips", tripsRouter);
 
 app.post("/api/chat", async (req, res) => {
-  const { sessionId, message } = req.body ?? {};
+  const { message } = req.body ?? {};
   if (!message || typeof message !== "string") {
     res.status(400).json({ error: "Message is required." });
     return;
@@ -34,8 +37,7 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const store = getConversationStore();
-    const cookieSessionId = readSessionId(req.headers.cookie);
-    const loaded = await loadConversation(cookieSessionId ?? sessionId);
+    const loaded = await loadConversation(resolveSessionId(req));
     const active = loaded;
     const chatSession = toChatSession(active);
     const previousCount = chatSession.history.length;
@@ -52,9 +54,10 @@ app.post("/api/chat", async (req, res) => {
     const reply = updatedSession.history[updatedSession.history.length - 1]?.content ?? "";
     const replyKind = updatedSession.decisionPackage ? "final" : "followup";
 
-    res.setHeader("Set-Cookie", createSessionCookie(active.sessionId));
+    setSessionCookie(res, active.sessionId);
     res.json({
       sessionId: active.sessionId,
+      tripId: active.conversation.id,
       reply,
       replyKind,
       tripSpec: updatedSession.tripSpec,
@@ -69,13 +72,12 @@ app.post("/api/chat", async (req, res) => {
 
 app.post("/api/session/new", async (req, res) => {
   try {
-    const bodySessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId : null;
-    const cookieSessionId = readSessionId(req.headers.cookie);
-    const loaded = await loadConversation(cookieSessionId ?? bodySessionId);
+    const loaded = await loadConversation(resolveSessionId(req));
     const reset = await resetConversationForNewChat(loaded);
-    res.setHeader("Set-Cookie", createSessionCookie(reset.sessionId));
+    setSessionCookie(res, reset.sessionId);
     res.json({
       sessionId: reset.sessionId,
+      tripId: reset.conversation.id,
       messages: reset.messages,
       tripSpec: reset.conversation.tripSpec,
       decisionPackage: null,
@@ -89,12 +91,13 @@ app.post("/api/session/new", async (req, res) => {
 });
 
 app.get("/api/session", (_req, res) => {
-  const cookieSessionId = readSessionId(_req.headers.cookie);
-  loadConversation(cookieSessionId)
+  const sessionId = appConfig.chatPersistenceEnabled ? readSessionId(_req.headers.cookie) : null;
+  loadConversation(sessionId)
     .then((loaded) => {
-      res.setHeader("Set-Cookie", createSessionCookie(loaded.sessionId));
+      setSessionCookie(res, loaded.sessionId);
       res.json({
         sessionId: loaded.sessionId,
+        tripId: loaded.conversation.id,
         messages: loaded.messages,
         tripSpec: loaded.conversation.tripSpec,
         decisionPackage: loaded.conversation.decisionPackage ?? null,
@@ -107,3 +110,20 @@ app.get("/api/session", (_req, res) => {
       res.status(500).json({ error: "Failed to load session." });
     });
 });
+
+function resolveSessionId(req: express.Request): string | null {
+  const bodySessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId : null;
+  if (!appConfig.chatPersistenceEnabled) {
+    return bodySessionId;
+  }
+  const cookieSessionId = readSessionId(req.headers.cookie);
+  return cookieSessionId ?? bodySessionId;
+}
+
+function setSessionCookie(res: express.Response, sessionId: string): void {
+  if (appConfig.chatPersistenceEnabled) {
+    res.setHeader("Set-Cookie", createSessionCookie(sessionId));
+    return;
+  }
+  res.setHeader("Set-Cookie", clearSessionCookie());
+}

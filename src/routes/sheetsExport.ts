@@ -38,6 +38,7 @@ sheetsExportRouter.post("/sheets", async (req, res) => {
 
     res.setHeader("Set-Cookie", createSessionCookie(loaded.sessionId));
     res.json({
+      tripId: loaded.conversation.id,
       sheetUrl: sheet.sheetUrl,
       decisionPackage,
       googleLinked: true

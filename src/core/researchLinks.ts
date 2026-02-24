@@ -18,10 +18,29 @@ export function buildResearchLinks(
     typeof lodgingNightlyCap === "number" && lodgingNightlyCap > 0
       ? ` under $${lodgingNightlyCap} per night`
       : "";
-  const lodgingQuery = encodeURIComponent(`${resortName} lodging ${dates}${lodgingBudgetHint}`);
+  const amenityHints = [
+    spec.lodgingConstraints.hotTubRequired ? "hot tub" : "",
+    spec.lodgingConstraints.laundryRequired ? "laundry" : "",
+    spec.lodgingConstraints.kitchenRequired ? "kitchen" : "",
+    typeof spec.lodgingConstraints.maxWalkMinutesToLift === "number"
+      ? `walk to lift ${spec.lodgingConstraints.maxWalkMinutesToLift} min`
+      : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const lodgingQuery = encodeURIComponent(`${resortName} lodging ${dates}${lodgingBudgetHint} ${amenityHints}`.trim());
   const gearQuery = encodeURIComponent(`ski rental near ${resortName}`);
   const groceryQuery = encodeURIComponent(`grocery store near ${resortName}`);
-  const takeoutQuery = encodeURIComponent(`takeout restaurants near ${resortName}`);
+  const diningHints = [
+    spec.diningConstraints.mustSupportTakeout ? "takeout" : "",
+    spec.diningConstraints.mustBeReservable ? "reservable" : "",
+    typeof spec.diningConstraints.minGroupCapacity === "number"
+      ? `${spec.diningConstraints.minGroupCapacity}+ people`
+      : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const takeoutQuery = encodeURIComponent(`restaurants near ${resortName} ${diningHints}`.trim());
   const airport = spec.travel.arrivalAirport?.trim();
   const carQuery = encodeURIComponent(`${airport ?? resortName} car rental ${dates}`);
 

@@ -13,6 +13,47 @@ export type SkillLevel = z.infer<typeof SkillLevelSchema>;
 export const BudgetBandSchema = z.enum(["low", "mid", "high"]);
 export type BudgetBand = z.infer<typeof BudgetBandSchema>;
 
+export const ConstraintModeSchema = z.enum(["hard", "soft"]);
+export type ConstraintMode = z.infer<typeof ConstraintModeSchema>;
+
+export const RoomingStyleSchema = z.enum(["couples", "singles", "hybrid"]);
+export type RoomingStyle = z.infer<typeof RoomingStyleSchema>;
+
+export const FieldConfidenceStatusSchema = z.enum(["confirmed", "assumed", "unresolved"]);
+export type FieldConfidenceStatus = z.infer<typeof FieldConfidenceStatusSchema>;
+
+export const ExtractedFieldStateSchema = z
+  .object({
+    confidence: z.number().min(0).max(1),
+    evidence: z.string(),
+    status: FieldConfidenceStatusSchema,
+    sourceTurn: z.number().int().min(0).optional(),
+    updatedAt: z.string().optional()
+  })
+  .strict();
+export type ExtractedFieldState = z.infer<typeof ExtractedFieldStateSchema>;
+
+export const SpecAssumptionSchema = z
+  .object({
+    path: z.string(),
+    rationale: z.string(),
+    confidence: z.number().min(0).max(1),
+    createdAt: z.string()
+  })
+  .strict();
+export type SpecAssumption = z.infer<typeof SpecAssumptionSchema>;
+
+export const PendingSpecAssumptionSchema = z
+  .object({
+    id: z.string(),
+    field: z.string(),
+    label: z.string(),
+    assumption: z.string(),
+    createdAt: z.string()
+  })
+  .strict();
+export type PendingSpecAssumption = z.infer<typeof PendingSpecAssumptionSchema>;
+
 export const TravelerPodSchema = z.object({
   origin: z.string().min(2),
   count: z.number().int().positive()
@@ -41,6 +82,12 @@ export const TripSpecSchema = z.object({
     size: z.number().int().positive().optional(),
     skillLevels: z.array(SkillLevelSchema).optional(),
     notes: z.string().optional()
+  }),
+  groupComposition: z.object({
+    couplesCount: z.number().int().min(0).optional(),
+    singlesCount: z.number().int().min(0).optional(),
+    roomingStyle: RoomingStyleSchema.optional(),
+    confirmed: z.boolean().optional()
   }),
   gear: z.object({
     rentalRequired: z.boolean().optional(),
@@ -83,6 +130,40 @@ export const TripSpecSchema = z.object({
     openToSuggestions: z.boolean().optional(),
     confirmed: z.boolean().optional()
   }),
+  lodgingConstraints: z.object({
+    maxWalkMinutesToLift: z.number().int().positive().optional(),
+    hotTubRequired: z.boolean().optional(),
+    laundryRequired: z.boolean().optional(),
+    minBedrooms: z.number().int().positive().optional(),
+    kitchenRequired: z.boolean().optional(),
+    constraintMode: ConstraintModeSchema.optional(),
+    confirmed: z.boolean().optional()
+  }),
+  diningConstraints: z.object({
+    mustSupportTakeout: z.boolean().optional(),
+    minGroupCapacity: z.number().int().positive().optional(),
+    mustBeReservable: z.boolean().optional(),
+    constraintMode: ConstraintModeSchema.optional(),
+    confirmed: z.boolean().optional()
+  }),
+  organizerOps: z.object({
+    wantsGroupChatSetup: z.boolean().optional(),
+    wantsSplitwiseSetup: z.boolean().optional(),
+    confirmed: z.boolean().optional()
+  }),
+  locks: z.object({
+    lockedItineraryId: z.string().optional(),
+    lockedResortName: z.string().optional(),
+    lockedStartDate: z.string().optional(),
+    lockedEndDate: z.string().optional()
+  }),
+  extraction: z.object({
+    fieldStates: z.record(ExtractedFieldStateSchema),
+    assumptions: z.array(SpecAssumptionSchema),
+    pendingAssumptions: z.array(PendingSpecAssumptionSchema),
+    latestUnresolvedPaths: z.array(z.string()),
+    turnCounter: z.number().int().min(0)
+  }),
   travelers: z.object({
     pods: z.array(TravelerPodSchema).optional()
   }),
@@ -97,16 +178,33 @@ export const TripSpecSchema = z.object({
 });
 export type TripSpec = z.infer<typeof TripSpecSchema>;
 
-export type TripSpecPatch = Partial<Omit<TripSpec, "id" | "createdAt" | "status">>;
+export type TripSpecPatch = Partial<Omit<TripSpec, "id" | "createdAt" | "status" | "extraction">> & {
+  extraction?: Partial<TripSpec["extraction"]>;
+};
 
 export const TripSpecPatchSchema = z
   .object({
     group: TripSpecSchema.shape.group.partial().optional(),
+    groupComposition: TripSpecSchema.shape.groupComposition.partial().optional(),
     gear: TripSpecSchema.shape.gear.partial().optional(),
     budget: TripSpecSchema.shape.budget.partial().optional(),
     travel: TripSpecSchema.shape.travel.partial().optional(),
     dates: TripSpecSchema.shape.dates.partial().optional(),
     location: TripSpecSchema.shape.location.partial().optional(),
+    lodgingConstraints: TripSpecSchema.shape.lodgingConstraints.partial().optional(),
+    diningConstraints: TripSpecSchema.shape.diningConstraints.partial().optional(),
+    organizerOps: TripSpecSchema.shape.organizerOps.partial().optional(),
+    locks: TripSpecSchema.shape.locks.partial().optional(),
+    extraction: z
+      .object({
+        fieldStates: z.record(ExtractedFieldStateSchema).optional(),
+        assumptions: z.array(SpecAssumptionSchema).optional(),
+        pendingAssumptions: z.array(PendingSpecAssumptionSchema).optional(),
+        latestUnresolvedPaths: z.array(z.string()).optional(),
+        turnCounter: z.number().int().min(0).optional()
+      })
+      .partial()
+      .optional(),
     travelers: TripSpecSchema.shape.travelers.partial().optional(),
     notes: TripSpecSchema.shape.notes.partial().optional(),
     updatedAt: z.string().optional()
@@ -120,11 +218,23 @@ export function createEmptyTripSpec(): TripSpec {
     createdAt: now,
     updatedAt: now,
     group: {},
+    groupComposition: {},
     gear: {},
     budget: {},
     travel: {},
     dates: {},
     location: {},
+    lodgingConstraints: {},
+    diningConstraints: {},
+    organizerOps: {},
+    locks: {},
+    extraction: {
+      fieldStates: {},
+      assumptions: [],
+      pendingAssumptions: [],
+      latestUnresolvedPaths: [],
+      turnCounter: 0
+    },
     travelers: {},
     notes: {},
     status: {
@@ -140,17 +250,71 @@ export function mergeTripSpec(spec: TripSpec, patch: TripSpecPatch): TripSpec {
     ...spec,
     ...patch,
     group: { ...spec.group, ...patch.group },
+    groupComposition: { ...spec.groupComposition, ...patch.groupComposition },
     gear: { ...spec.gear, ...patch.gear },
     budget: { ...spec.budget, ...patch.budget },
     travel: { ...spec.travel, ...patch.travel },
     dates: { ...spec.dates, ...patch.dates },
     location: { ...spec.location, ...patch.location },
+    lodgingConstraints: { ...spec.lodgingConstraints, ...patch.lodgingConstraints },
+    diningConstraints: { ...spec.diningConstraints, ...patch.diningConstraints },
+    organizerOps: { ...spec.organizerOps, ...patch.organizerOps },
+    locks: { ...spec.locks, ...patch.locks },
+    extraction: {
+      fieldStates: { ...spec.extraction.fieldStates, ...patch.extraction?.fieldStates },
+      assumptions: patch.extraction?.assumptions ?? spec.extraction.assumptions,
+      pendingAssumptions: patch.extraction?.pendingAssumptions ?? spec.extraction.pendingAssumptions,
+      latestUnresolvedPaths: patch.extraction?.latestUnresolvedPaths ?? spec.extraction.latestUnresolvedPaths,
+      turnCounter: patch.extraction?.turnCounter ?? spec.extraction.turnCounter
+    },
     travelers: { ...spec.travelers, ...patch.travelers },
     notes: { ...spec.notes, ...patch.notes },
     status: spec.status
   };
   merged.updatedAt = new Date().toISOString();
   return updateTripSpecStatus(merged);
+}
+
+export function normalizeTripSpec(input: unknown): TripSpec {
+  if (!input || typeof input !== "object") {
+    return createEmptyTripSpec();
+  }
+  const base = createEmptyTripSpec();
+  const parsed = TripSpecSchema.safeParse(input);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  const candidate = input as Partial<TripSpec>;
+  return updateTripSpecStatus({
+    ...base,
+    ...candidate,
+    group: { ...base.group, ...(candidate.group ?? {}) },
+    groupComposition: { ...base.groupComposition, ...(candidate.groupComposition ?? {}) },
+    gear: { ...base.gear, ...(candidate.gear ?? {}) },
+    budget: { ...base.budget, ...(candidate.budget ?? {}) },
+    travel: { ...base.travel, ...(candidate.travel ?? {}) },
+    dates: { ...base.dates, ...(candidate.dates ?? {}) },
+    location: { ...base.location, ...(candidate.location ?? {}) },
+    lodgingConstraints: { ...base.lodgingConstraints, ...(candidate.lodgingConstraints ?? {}) },
+    diningConstraints: { ...base.diningConstraints, ...(candidate.diningConstraints ?? {}) },
+    organizerOps: { ...base.organizerOps, ...(candidate.organizerOps ?? {}) },
+    locks: { ...base.locks, ...(candidate.locks ?? {}) },
+    extraction: {
+      fieldStates: {
+        ...base.extraction.fieldStates,
+        ...((candidate.extraction as any)?.fieldStates ?? {})
+      },
+      assumptions: (candidate.extraction as any)?.assumptions ?? base.extraction.assumptions,
+      pendingAssumptions:
+        (candidate.extraction as any)?.pendingAssumptions ?? base.extraction.pendingAssumptions,
+      latestUnresolvedPaths:
+        (candidate.extraction as any)?.latestUnresolvedPaths ?? base.extraction.latestUnresolvedPaths,
+      turnCounter: (candidate.extraction as any)?.turnCounter ?? base.extraction.turnCounter
+    },
+    travelers: { ...base.travelers, ...(candidate.travelers ?? {}) },
+    notes: { ...base.notes, ...(candidate.notes ?? {}) },
+    status: base.status
+  });
 }
 
 export function updateTripSpecStatus(spec: TripSpec): TripSpec {
@@ -200,6 +364,12 @@ export function determineMissingFields(spec: TripSpec): string[] {
   }
   if (needsTravelerPods(spec) && (!spec.travelers.pods || spec.travelers.pods.length === 0)) {
     missing.push("traveler_pods");
+  }
+  if (spec.lodgingConstraints.constraintMode === "hard" && spec.lodgingConstraints.confirmed !== true) {
+    missing.push("lodging_constraints");
+  }
+  if (spec.diningConstraints.constraintMode === "hard" && spec.diningConstraints.confirmed !== true) {
+    missing.push("dining_constraints");
   }
 
   return missing;

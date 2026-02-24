@@ -7,6 +7,10 @@ export function defaultQuestion(missingFields: string[]): string {
   switch (field) {
     case "traveler_pods":
       return 'Please share departure locations and headcount for each group (e.g., "3 from SF, 3 from Sacramento").';
+    case "lodging_constraints":
+      return "Any hard lodging constraints (walk-to-lift minutes, hot tub, laundry, bedroom count, kitchen)?";
+    case "dining_constraints":
+      return "Any hard dining constraints (takeout required, reservable, minimum group seating)?";
     case "dates":
       return "What dates are you aiming for? A range like “Feb 20–23” works.";
     case "group_size":
@@ -48,11 +52,20 @@ export function buildDecisionSummary(
       return `- ${itinerary.title}: ${itinerary.summary} ${budget}`;
     })
     .join("\n");
+  const noFeasibleLodgingForHardConstraints =
+    spec.lodgingConstraints.constraintMode === "hard" &&
+    decision.itineraries.every((itinerary) => (itinerary.liveOptions?.lodging?.length ?? 0) === 0);
+  const optionsBlock =
+    decision.itineraries.length > 0 && !noFeasibleLodgingForHardConstraints
+      ? `Here are 2–3 options:\n${itineraryLines}`
+      : "No feasible options were found for the current hard constraints. Try relaxing one constraint and refresh.";
 
   const extras = [
     decision.budgetSummary.summaryLine,
+    buildSourceSummary(decision),
     buildPoiSummary(decision),
     buildCarRentalNote(spec),
+    buildOpsSummary(decision),
     "Planning links are organized in the itinerary cards (Lodging, Gear, Grocery, Takeout, Cars).",
     "Use the “Export to Google Sheets” button when you’re ready for a shareable plan."
   ]
@@ -63,12 +76,35 @@ export function buildDecisionSummary(
     ? `${generationNote}\n\nI’ve got enough to build itineraries for ${group} on ${dates}.`
     : `I’ve got enough to build itineraries for ${group} on ${dates}.`;
 
-  return `${header}\n${resortLine}\n\nHere are 2–3 options:\n${itineraryLines}\n\n${extras}`;
+  return `${header}\n${resortLine}\n\n${optionsBlock}\n\n${extras}`;
 }
 
 function buildPoiSummary(decision: DecisionPackage): string {
   const gear = decision.poiResults.gearShops[0];
   const grocery = decision.poiResults.groceries[0];
   const restaurant = decision.poiResults.restaurants[0];
-  return `Nearby picks: Gear — ${gear.name} (${gear.hours}); Grocery — ${grocery.name}; Restaurant — ${restaurant.name}.`;
+  if (!gear || !grocery || !restaurant) {
+    return "Nearby picks are still loading; open itinerary links for vendor search.";
+  }
+  const diningFlags = [
+    restaurant.supportsTakeout ? "takeout" : null,
+    restaurant.reservable ? "reservable" : null
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return `Nearby picks: Gear — ${gear.name} (${gear.hours}); Grocery — ${grocery.name}; Restaurant — ${restaurant.name}${diningFlags ? ` (${diningFlags})` : ""}.`;
+}
+
+function buildSourceSummary(decision: DecisionPackage): string {
+  const lodgingSource = decision.itineraries[0]?.liveOptions?.lodging[0]?.sourceMeta.source ?? "estimated";
+  const carSource = decision.itineraries[0]?.liveOptions?.cars[0]?.sourceMeta.source ?? "estimated";
+  const poiSource = decision.poiResults.restaurants[0]?.sourceMeta.source ?? "estimated";
+  return `Data quality: Lodging ${lodgingSource}, Cars ${carSource}, POIs ${poiSource}.`;
+}
+
+function buildOpsSummary(decision: DecisionPackage): string {
+  const taskCount = decision.opsBoard.tasks.length;
+  const chat = decision.opsBoard.chatBootstrap.enabled ? "enabled" : "off";
+  const splitwise = decision.opsBoard.splitwiseBootstrap.enabled ? "enabled" : "off";
+  return `Ops board: ${taskCount} tasks created. Group chat bootstrap ${chat}. Splitwise bootstrap ${splitwise}.`;
 }

@@ -7,10 +7,25 @@ const fieldLabels = {
   passes: "Pass ownership",
   travel_restrictions: "Travel restrictions",
   location_input: "Location",
-  traveler_pods: "Departure pods"
+  traveler_pods: "Departure pods",
+  lodging_constraints: "Lodging constraints",
+  dining_constraints: "Dining constraints"
 };
 
-export function createRenderer({ chat, actions, input, newChatBtn, sendBtn, pageSubhead, onExpand, onExport }) {
+export function createRenderer({
+  chat,
+  actions,
+  input,
+  newChatBtn,
+  sendBtn,
+  pageSubhead,
+  onExpand,
+  onExport,
+  onRefresh,
+  onLock,
+  onBootstrapSplitwise,
+  onBootstrapChat
+}) {
   function addMessage(role, content) {
     const bubble = document.createElement("div");
     bubble.className = `bubble ${role}`;
@@ -79,6 +94,12 @@ export function createRenderer({ chat, actions, input, newChatBtn, sendBtn, page
     const summary = renderBudgetSummary(state.decisionPackage?.budgetSummary);
     if (summary) actions.appendChild(summary);
 
+    const controls = renderControlRow(state);
+    if (controls) actions.appendChild(controls);
+
+    const matrix = renderDecisionMatrix(state.decisionPackage?.decisionMatrix);
+    if (matrix) actions.appendChild(matrix);
+
     const grid = document.createElement("div");
     grid.className = "card-grid";
 
@@ -104,13 +125,30 @@ export function createRenderer({ chat, actions, input, newChatBtn, sendBtn, page
       }
 
       const links = renderLinkRow(itinerary.researchLinks);
+      const source = document.createElement("p");
+      source.className = "source-line";
+      const lodgingSource = itinerary.liveOptions?.lodging?.[0]?.sourceMeta?.source ?? "estimated";
+      const carSource = itinerary.liveOptions?.cars?.[0]?.sourceMeta?.source ?? "estimated";
+      source.textContent = `Sources: lodging ${lodgingSource}, cars ${carSource}`;
+
+      const topLodging = itinerary.liveOptions?.lodging?.[0];
+      const liveBlurb = document.createElement("p");
+      liveBlurb.className = "small-muted";
+      liveBlurb.textContent = topLodging
+        ? `Top stay: ${topLodging.name} ~$${topLodging.nightlyRateUsd}/night`
+        : "Top stay: use Lodging link to fetch current inventory.";
 
       const button = document.createElement("button");
       button.textContent = "Expand";
       button.className = "ghost-btn";
       button.addEventListener("click", () => onExpand(itinerary.id));
 
-      card.append(title, summaryCopy, budget, links, button);
+      const lockBtn = document.createElement("button");
+      lockBtn.textContent = "Lock + Recompute";
+      lockBtn.className = "ghost-btn";
+      lockBtn.addEventListener("click", () => onLock(itinerary));
+
+      card.append(title, summaryCopy, budget, source, liveBlurb, links, button, lockBtn);
       grid.appendChild(card);
     });
 
@@ -172,6 +210,73 @@ export function createRenderer({ chat, actions, input, newChatBtn, sendBtn, page
     return box;
   }
 
+  function renderControlRow(state) {
+    if (!state.decisionPackage) return null;
+    const row = document.createElement("div");
+    row.className = "export-row";
+
+    const refresh = document.createElement("button");
+    refresh.className = "ghost-btn";
+    refresh.textContent = "Refresh Live Options";
+    refresh.addEventListener("click", onRefresh);
+
+    const splitwise = document.createElement("button");
+    splitwise.className = "ghost-btn";
+    splitwise.textContent = "Bootstrap Splitwise";
+    splitwise.addEventListener("click", onBootstrapSplitwise);
+
+    const chatBtn = document.createElement("button");
+    chatBtn.className = "ghost-btn";
+    chatBtn.textContent = "Bootstrap Group Chat";
+    chatBtn.addEventListener("click", onBootstrapChat);
+
+    row.append(refresh, splitwise, chatBtn);
+    return row;
+  }
+
+  function renderDecisionMatrix(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const wrap = document.createElement("div");
+    wrap.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Decision matrix";
+    wrap.appendChild(title);
+
+    const table = document.createElement("table");
+    table.className = "matrix-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Resort</th>
+          <th>Total pp</th>
+          <th>Lodging</th>
+          <th>Pass</th>
+          <th>Travel</th>
+          <th>Amenities</th>
+          <th>Walk</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      if (row.locked) tr.classList.add("locked");
+      tr.innerHTML = `
+        <td>${row.resortName}${row.locked ? " (locked)" : ""}</td>
+        <td>${typeof row.totalCostPerPerson === "number" ? `$${row.totalCostPerPerson}` : "-"}</td>
+        <td>${scoreLabel(row.lodgingFitScore)}</td>
+        <td>${scoreLabel(row.passFitScore)}</td>
+        <td>${scoreLabel(row.travelBurdenScore)}</td>
+        <td>${scoreLabel(row.amenityFitScore)}</td>
+        <td>${scoreLabel(row.walkabilityScore)}</td>
+      `;
+      tbody?.appendChild(tr);
+    });
+    wrap.appendChild(table);
+    return wrap;
+  }
+
   function renderLinkRow(researchLinks) {
     const wrap = document.createElement("div");
     wrap.className = "link-row";
@@ -219,6 +324,11 @@ export function createRenderer({ chat, actions, input, newChatBtn, sendBtn, page
     exportWrap.appendChild(button);
     return exportWrap;
   }
+}
+
+function scoreLabel(value) {
+  const pct = Math.round((Number(value) || 0) * 100);
+  return `${pct}%`;
 }
 
 function parseMessageWithLinks(content) {

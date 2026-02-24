@@ -16,6 +16,16 @@ export function createSessionCookie(sessionId: string): string {
   });
 }
 
+export function clearSessionCookie(): string {
+  return cookie.serialize(SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isSecureCookie,
+    path: "/",
+    maxAge: 0
+  });
+}
+
 export function readSessionId(rawCookie?: string): string | null {
   if (!rawCookie) return null;
   const parsed = cookie.parse(rawCookie);

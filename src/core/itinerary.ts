@@ -3,6 +3,7 @@ import { shortlistResorts } from "./resortRanking";
 import { scoreResortForTrip } from "./snow";
 import { TripSpec } from "./tripSpec";
 import { buildResearchLinks, ResearchLinks } from "./researchLinks";
+import { CarOption, LodgingOption } from "./supply";
 
 export type Itinerary = {
   id: string;
@@ -28,6 +29,10 @@ export type Itinerary = {
     assumptions: string[];
   };
   researchLinks: ResearchLinks;
+  liveOptions?: {
+    lodging: LodgingOption[];
+    cars: CarOption[];
+  };
 };
 
 export type ItineraryPlan = {
@@ -183,6 +188,16 @@ function estimateNightlyLodgingCap(
 }
 
 function buildDateCandidates(spec: TripSpec, limit: number): Array<{ start: string; end: string; label: string }> {
+  if (spec.locks.lockedStartDate && spec.locks.lockedEndDate) {
+    return [
+      {
+        start: spec.locks.lockedStartDate,
+        end: spec.locks.lockedEndDate,
+        label: `${spec.locks.lockedStartDate} to ${spec.locks.lockedEndDate}`
+      }
+    ];
+  }
+
   if (!spec.dates.start || !spec.dates.end) {
     return [{ start: "", end: "", label: "TBD dates" }];
   }

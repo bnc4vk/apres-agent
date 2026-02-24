@@ -3,12 +3,18 @@ import { findResortByName, RESORTS, Resort } from "./resorts";
 import { TripSpec } from "./tripSpec";
 
 export function shortlistResorts(spec: TripSpec, limit = 3): Resort[] {
+  if (spec.locks.lockedResortName) {
+    const locked = findResortByName(spec.locks.lockedResortName);
+    return locked ? [locked] : [];
+  }
+
   if (spec.location.resort) {
     const match = findResortByName(spec.location.resort);
     return match ? [match] : [];
   }
 
   let candidates = RESORTS;
+  const hasExplicitLocationFilter = Boolean(spec.location.region || spec.location.state);
 
   if (spec.location.region) {
     const regionLower = spec.location.region.toLowerCase();
@@ -20,7 +26,11 @@ export function shortlistResorts(spec: TripSpec, limit = 3): Resort[] {
     candidates = candidates.filter((resort) => resort.state.toLowerCase().includes(stateLower));
   }
 
-  if (spec.location.openToSuggestions || candidates.length === 0) {
+  if (candidates.length === 0 && hasExplicitLocationFilter) {
+    return [];
+  }
+
+  if (spec.location.openToSuggestions || (!hasExplicitLocationFilter && candidates.length === 0)) {
     candidates = RESORTS;
   }
 

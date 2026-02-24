@@ -16,6 +16,8 @@ export function expandItinerary(
   const gearShop = poiResults.gearShops[0]?.name ?? "a nearby gear shop";
   const grocery = poiResults.groceries[0]?.name ?? "a nearby grocery";
   const restaurant = poiResults.restaurants[0]?.name ?? "a nearby restaurant";
+  const lodging = itinerary.liveOptions?.lodging?.[0];
+  const car = itinerary.liveOptions?.cars?.[0];
 
   const days: string[] = [];
   for (let i = 0; i < tripLength; i += 1) {
@@ -40,6 +42,12 @@ export function expandItinerary(
     `${itinerary.title}`,
     `Dates: ${itinerary.dateRange?.label ?? "TBD"}`,
     `Lodging: ${itinerary.lodgingArea}`,
+    lodging
+      ? `Suggested stay: ${lodging.name} (~$${lodging.nightlyRateUsd}/night, source: ${lodging.sourceMeta.source})`
+      : "Suggested stay: use itinerary lodging links to confirm current availability.",
+    car
+      ? `Suggested car: ${car.provider} ${car.vehicleClass} (~$${car.totalPriceUsd} total, source: ${car.sourceMeta.source})`
+      : "",
     "",
     days.join("\n\n")
   ].join("\n");

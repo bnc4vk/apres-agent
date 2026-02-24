@@ -31,6 +31,25 @@ export async function loadConversation(sessionId?: string | null): Promise<Loade
   };
 }
 
+export async function loadConversationByTripId(tripId: string): Promise<LoadedConversation | null> {
+  const store = getConversationStore();
+  const conversation = await store.getConversationById(tripId);
+  if (!conversation) return null;
+  const messages = await store.listMessages(conversation.id);
+  const googleLinked = await store.getGoogleLinked(conversation.sessionPk);
+
+  return {
+    session: {
+      id: conversation.sessionPk,
+      sessionId: conversation.sessionPk
+    },
+    sessionId: conversation.sessionPk,
+    conversation,
+    messages,
+    googleLinked
+  };
+}
+
 export function toChatSession(conversation: LoadedConversation): ChatSession {
   return {
     id: conversation.conversation.id,

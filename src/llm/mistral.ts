@@ -1,30 +1,73 @@
 import { Mistral } from "@mistralai/mistralai";
+import dayjs from "dayjs";
 import { z } from "zod";
-import { TripSpecPatch, TripSpecPatchSchema, TripSpec } from "../core/tripSpec";
-import { LLMClient, SpecPatchInput } from "./client";
+import { TripSpecPatchSchema, TripSpec } from "../core/tripSpec";
+import {
+  AssumptionResolutionInput,
+  AssumptionResolutionResult,
+  ExtractedFieldState,
+  LLMClient,
+  SpecExtractionResult,
+  SpecPatchInput
+} from "./client";
 import { mistralApiKey, mistralLargeModel } from "./config";
 import { ChatMessage } from "./types";
 
-const EvidenceItemSchema = z
+const ExtractedFieldStateSchema = z
   .object({
     path: z.string().min(1),
-    quote: z.string().min(1)
+    confidence: z.number().min(0).max(1),
+    evidence: z.string().min(1)
   })
   .strict();
 
-const SpecPatchWithEvidenceSchema = z
+const AssumptionSchema = z
+  .object({
+    path: z.string().min(1),
+    rationale: z.string().min(1),
+    confidence: z.number().min(0).max(1)
+  })
+  .strict();
+
+const SpecExtractionSchema = z
   .object({
     patch: TripSpecPatchSchema,
-    evidence: z.array(EvidenceItemSchema)
+    fieldStates: z.array(ExtractedFieldStateSchema),
+    unresolvedPaths: z.array(z.string()),
+    clarifyingQuestions: z.array(z.string()),
+    assumptions: z.array(AssumptionSchema)
+  })
+  .strict();
+
+const DateCompletionSchema = z
+  .object({
+    start: z.string().optional(),
+    end: z.string().optional(),
+    kind: z.enum(["exact", "window"]).optional(),
+    weekendsPreferred: z.boolean().optional(),
+    tripLengthDays: z.number().int().positive().optional(),
+    flexibleDays: z.number().int().min(0).optional(),
+    confidence: z.number().min(0).max(1),
+    rationale: z.string().min(1)
+  })
+  .strict();
+
+const AssumptionResolutionSchema = z
+  .object({
+    acceptedIds: z.array(z.string()),
+    rejectedIds: z.array(z.string()),
+    unsureIds: z.array(z.string())
   })
   .strict();
 
 const SYSTEM_PROMPT = [
-  "You are an assistant for ski-trip planning.",
-  "Your job is to extract and clarify trip constraints to build an itinerary.",
-  "Stay focused on ski trips. If the user asks for unrelated help, briefly redirect back to ski-trip planning.",
-  "Do not invent facts. If something is unknown, omit it or ask a clarifying question.",
-  "Dates must be ISO format YYYY-MM-DD when provided."
+  "You are a structured extraction engine for ski trip planning.",
+  "Extract as much TripSpec data as possible from the latest user message using conversation context.",
+  "Do not use hardcoded parsing behavior. Use semantic interpretation.",
+  "For every extracted field, return confidence (0-1) and verbatim evidence from the latest user message.",
+  "When values are inferred rather than explicit, include them in assumptions with rationale and confidence.",
+  "If something remains unclear, return unresolvedPaths and one concise clarifying question.",
+  "Output must be valid JSON matching the provided schema."
 ].join("\n");
 
 function toMistralMessages(messages: ChatMessage[]) {
@@ -38,9 +81,9 @@ export class MistralLLMClient implements LLMClient {
     this.mistral = new Mistral({ apiKey });
   }
 
-  async generateTripSpecPatch(input: SpecPatchInput): Promise<TripSpecPatch> {
+  async extractTripSpec(input: SpecPatchInput): Promise<SpecExtractionResult> {
     try {
-      const prompt = buildSpecPatchPrompt(input.tripSpec, input.lastUserMessage);
+      const prompt = buildExtractionPrompt(input.tripSpec, input.lastUserMessage);
       const response = await this.mistral.chat.parse(
         {
           model: mistralLargeModel,
@@ -49,212 +92,313 @@ export class MistralLLMClient implements LLMClient {
             ...toMistralMessages(input.messages.slice(-12)),
             { role: "user", content: prompt }
           ],
-          responseFormat: SpecPatchWithEvidenceSchema,
-          temperature: 0.2
+          responseFormat: SpecExtractionSchema,
+          temperature: 0.15
         },
         {}
       );
 
       const parsed = response.choices?.[0]?.message?.parsed;
-      if (!parsed) return {};
-      const data = parsed as z.infer<typeof SpecPatchWithEvidenceSchema>;
-      let patch = data.patch;
-      const missingEvidencePaths = findMissingEvidencePaths(patch, data.evidence);
-      if (missingEvidencePaths.length > 0) {
-        try {
-          const repaired = await this.mistral.chat.parse(
-            {
-              model: mistralLargeModel,
-              messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                {
-                  role: "user",
-                  content: buildRepairPrompt(patch, data.evidence, input.lastUserMessage)
-                }
-              ],
-              responseFormat: TripSpecPatchSchema,
-              temperature: 0.2
-            },
-            {}
-          );
-          patch = (repaired.choices?.[0]?.message?.parsed as TripSpecPatch) ?? patch;
-        } catch {
-          // ignore repair failures
-        }
-      }
-      return filterPatchByEvidence(patch, data.evidence, input.lastUserMessage);
+      if (!parsed) return emptyExtraction();
+      const data = parsed as z.infer<typeof SpecExtractionSchema>;
+      const sanitized = sanitizeExtraction(data, input.lastUserMessage);
+      return await this.completeDatesIfNeeded(sanitized, input);
     } catch {
-      return {};
+      return emptyExtraction();
     }
   }
 
+  async resolveAssumptions(input: AssumptionResolutionInput): Promise<AssumptionResolutionResult> {
+    if (input.pendingAssumptions.length === 0) {
+      return emptyAssumptionResolution();
+    }
+    try {
+      const prompt = buildAssumptionResolutionPrompt(input);
+      const response = await this.mistral.chat.parse(
+        {
+          model: mistralLargeModel,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You classify whether a user accepted, rejected, or left uncertain each pending assumption in a planning conversation."
+            },
+            ...toMistralMessages(input.messages.slice(-12)),
+            { role: "user", content: prompt }
+          ],
+          responseFormat: AssumptionResolutionSchema,
+          temperature: 0.1
+        },
+        {}
+      );
+      const parsed = response.choices?.[0]?.message?.parsed as z.infer<typeof AssumptionResolutionSchema> | undefined;
+      if (!parsed) return emptyAssumptionResolution();
+      return sanitizeAssumptionResolution(parsed, input.pendingAssumptions.map((item) => item.id));
+    } catch {
+      return emptyAssumptionResolution();
+    }
+  }
+
+  private async completeDatesIfNeeded(
+    extraction: SpecExtractionResult,
+    input: SpecPatchInput
+  ): Promise<SpecExtractionResult> {
+    if (!shouldAttemptDateCompletion(extraction)) return extraction;
+    if (hasValidDateRange(extraction.patch.dates?.start, extraction.patch.dates?.end)) return extraction;
+
+    try {
+      const prompt = buildDateCompletionPrompt(input.tripSpec, input.lastUserMessage, extraction.patch.dates ?? {});
+      const response = await this.mistral.chat.parse(
+        {
+          model: mistralLargeModel,
+          messages: [
+            { role: "system", content: "You convert date intent into concrete ISO date ranges." },
+            { role: "user", content: prompt }
+          ],
+          responseFormat: DateCompletionSchema,
+          temperature: 0.1
+        },
+        {}
+      );
+      const parsed = response.choices?.[0]?.message?.parsed as z.infer<typeof DateCompletionSchema> | undefined;
+      if (!parsed) return extraction;
+      if (!hasValidDateRange(parsed.start, parsed.end)) return extraction;
+
+      const confidence = clamp(parsed.confidence);
+      const nextPatch = {
+        ...extraction.patch,
+        dates: {
+          ...(extraction.patch.dates ?? {}),
+          start: parsed.start,
+          end: parsed.end,
+          kind: parsed.kind ?? extraction.patch.dates?.kind,
+          weekendsPreferred: parsed.weekendsPreferred ?? extraction.patch.dates?.weekendsPreferred,
+          tripLengthDays: parsed.tripLengthDays ?? extraction.patch.dates?.tripLengthDays,
+          flexibleDays: parsed.flexibleDays ?? extraction.patch.dates?.flexibleDays
+        }
+      };
+
+      const nextFieldStates = [...extraction.fieldStates];
+      nextFieldStates.push({
+        path: "dates.start",
+        confidence,
+        evidence: input.lastUserMessage
+      });
+      nextFieldStates.push({
+        path: "dates.end",
+        confidence,
+        evidence: input.lastUserMessage
+      });
+
+      const nextAssumptions = [...extraction.assumptions];
+      if (confidence < 0.85) {
+        nextAssumptions.push({
+          path: "dates.start",
+          rationale: parsed.rationale,
+          confidence
+        });
+        nextAssumptions.push({
+          path: "dates.end",
+          rationale: parsed.rationale,
+          confidence
+        });
+      }
+
+      const nextUnresolved = extraction.unresolvedPaths.filter((path) => !(path === "dates" || path.startsWith("dates.")));
+      return {
+        patch: nextPatch,
+        fieldStates: dedupeFieldStates(nextFieldStates),
+        unresolvedPaths: nextUnresolved,
+        clarifyingQuestions: extraction.clarifyingQuestions,
+        assumptions: dedupeAssumptions(nextAssumptions)
+      };
+    } catch {
+      return extraction;
+    }
+  }
 }
 
-function buildSpecPatchPrompt(tripSpec: TripSpec, lastUserMessage: string): string {
+function buildExtractionPrompt(tripSpec: TripSpec, lastUserMessage: string): string {
+  const today = new Date().toISOString().slice(0, 10);
   return [
-    "Update the TripSpec based on the user's last message.",
-    "Return ONLY a JSON object with fields: { patch, evidence }.",
-    "patch must match the TripSpecPatch schema.",
-    "evidence is a list of { path, quote } where quote is copied verbatim from the user's last message.",
-    "Rules:",
-    "- Only include fields you are confident the user stated or strongly implied, and provide evidence for each field.",
-    "- evidence.path must be the exact field path you are setting (e.g., 'group.size', 'dates.start').",
-    "- If the user gives a date window (e.g., 'sometime in March'), set dates.kind='window' and set dates.start/dates.end to the best-known window boundaries if provided; otherwise omit.",
-    "- If the user provides a month and year (e.g., 'March 2026'), set dates.kind='window' with start=2026-03-01 and end=2026-03-31.",
-    "- Set dates.weekendsPreferred ONLY if the user explicitly mentions weekends/weekdays.",
-    "- Set dates.yearConfirmed=true ONLY if the user explicitly included a year in their message.",
-    "- If the user says 'no restrictions', set travel.confirmed=true and leave restrictions empty/omitted.",
-    "- If the user says 'suggest options', set location.openToSuggestions=true and location.confirmed=true.",
-    "- If the user addresses a category (gear/budget/travel/location), set the corresponding *.confirmed=true.",
-    "- If the user says 'need rentals' or 'need gear rentals', set gear.rentalRequired=true.",
-    "- If the user states a budget band (low/mid/high/luxury/cheap), set budget.band accordingly.",
-    "- If the user mentions partial rentals, set gear.rentalNotes and/or gear.rentalShare.",
-    "- If the user mentions Ikon/Epic/Indy/Mountain Collective passes, set notes.passes counts when possible.",
-    "- If the user provides pass ownership counts, map to notes.passes.ikonCount/epicCount/indyCount/mountainCollectiveCount/noPassCount and set notes.passes.confirmed=true.",
-    "- If the user says they have no passes, set notes.passes.noPassCount (or include notes) and notes.passes.confirmed=true.",
-    "- If the user mentions a budget in dollars, set budget.perPersonMax or budget.totalMax and budget.currency.",
-    "- If the user mentions an airport (e.g., DEN), set travel.arrivalAirport.",
-    "- If the user mentions a state (e.g., Colorado), set location.state.",
+    "Given the current TripSpec and the latest user message, produce a structured extraction result.",
+    "Return fields: patch, fieldStates, unresolvedPaths, clarifyingQuestions, assumptions.",
+    "Requirements:",
+    "- fieldStates.path must be a precise dot-path in TripSpec.",
+    "- fieldStates.evidence must be a direct quote from the latest user message.",
+    "- For relative time phrases, resolve concrete ISO dates using today's date.",
+    "- If the user gives any usable date preference, set dates.start and dates.end in patch.",
+    "- Do not set dates.kind without dates.start and dates.end.",
+    "- Any inferred value that should be used must be included in patch (do not put values only in assumptions).",
+    "- For inferred dates, keep confidence in the assumption range (0.60-0.84) and include rationale.",
+    "- Include unresolved paths only for fields needed to proceed.",
+    "- Keep clarifyingQuestions short and user-friendly.",
+    "- Use confidence to reflect certainty. Do not inflate confidence.",
+    "",
+    `Today's date: ${today}`,
     "",
     `Current TripSpec JSON:\n${JSON.stringify(tripSpec)}`,
     "",
-    `User last message:\n${lastUserMessage}`
+    `Latest user message:\n${lastUserMessage}`
   ].join("\n");
 }
 
-function findMissingEvidencePaths(
-  patch: TripSpecPatch,
-  evidence: Array<{ path: string; quote: string }>
-): string[] {
-  const evidencePaths = evidence.map((item) => item.path);
-  return evidencePaths.filter((path) => !pathExists(patch, path));
-}
-
-function pathExists(obj: any, path: string): boolean {
-  const parts = path.split(".");
-  let current = obj as any;
-  for (const part of parts) {
-    if (current === null || current === undefined || typeof current !== "object") return false;
-    if (!(part in current)) return false;
-    current = current[part];
-  }
-  return true;
-}
-
-function buildRepairPrompt(
-  patch: TripSpecPatch,
-  evidence: Array<{ path: string; quote: string }>,
-  lastUserMessage: string
-): string {
-  return [
-    "Your previous patch omitted some fields that have evidence.",
-    "Return a corrected TripSpecPatch JSON that includes every field referenced by evidence.",
-    "Use the evidence quotes to set values.",
-    "Rules:",
-    "- Preserve any existing fields in the patch.",
-    "- If evidence includes a month+year, set dates.kind='window' with start/end to the first/last day of that month.",
-    "- If evidence mentions weekdays or weekends, set dates.weekendsPreferred accordingly.",
-    "- If evidence includes a year, set dates.yearConfirmed=true.",
-    "",
-    `Evidence list: ${JSON.stringify(evidence)}`,
-    `Current patch: ${JSON.stringify(patch)}`,
-    `User message: ${lastUserMessage}`
-  ].join("\n");
-}
-
-function filterPatchByEvidence(
-  patch: TripSpecPatch,
-  evidence: Array<{ path: string; quote: string }>,
+function sanitizeExtraction(
+  data: z.infer<typeof SpecExtractionSchema>,
   sourceText: string
-): TripSpecPatch {
-  const normalizedSource = sourceText.toLowerCase();
-  const validEvidence = evidence.filter((item) =>
-    normalizedSource.includes(item.quote.toLowerCase())
+): SpecExtractionResult {
+  const normalized = sourceText.toLowerCase();
+  const fieldStates: ExtractedFieldState[] = [];
+  for (const state of data.fieldStates) {
+    const path = normalizePath(state.path);
+    if (!path) continue;
+    if (!normalized.includes(state.evidence.toLowerCase())) continue;
+    fieldStates.push({
+      path,
+      confidence: clamp(state.confidence),
+      evidence: state.evidence
+    });
+  }
+
+  const unresolvedPaths = [...new Set((data.unresolvedPaths ?? []).map(normalizePath).filter(Boolean))];
+  const assumptions = (data.assumptions ?? [])
+    .map((assumption) => ({
+      path: normalizePath(assumption.path),
+      rationale: assumption.rationale,
+      confidence: clamp(assumption.confidence)
+    }))
+    .filter((assumption) => Boolean(assumption.path));
+
+  return {
+    patch: data.patch,
+    fieldStates,
+    unresolvedPaths: unresolvedPaths as string[],
+    clarifyingQuestions: (data.clarifyingQuestions ?? []).filter(Boolean).slice(0, 2),
+    assumptions: assumptions as Array<{ path: string; rationale: string; confidence: number }>
+  };
+}
+
+function clamp(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, Number(value.toFixed(2))));
+}
+
+function emptyExtraction(): SpecExtractionResult {
+  return {
+    patch: {},
+    fieldStates: [],
+    unresolvedPaths: [],
+    clarifyingQuestions: [],
+    assumptions: []
+  };
+}
+
+function emptyAssumptionResolution(): AssumptionResolutionResult {
+  return {
+    acceptedIds: [],
+    rejectedIds: [],
+    unsureIds: []
+  };
+}
+
+function normalizePath(path: string): string {
+  if (!path) return "";
+  return path.replace(/^patch\./, "").trim();
+}
+
+function buildAssumptionResolutionPrompt(input: AssumptionResolutionInput): string {
+  return [
+    "Decide the user intent for each pending assumption.",
+    "Return IDs in exactly one list: acceptedIds, rejectedIds, or unsureIds.",
+    "Guidance:",
+    "- If user says remaining assumptions are fine/valid, accept those pending items.",
+    "- If user provides a specific override for one item, reject that item and let extraction handle the explicit value.",
+    "- If no clear signal for an item, mark unsure.",
+    "- 'the rest are fine', 'the remaining assumptions are valid', and similar blanket acceptance phrases mean ACCEPT all pending items except any item explicitly overridden in the same message.",
+    "- A specific correction to one item plus a blanket acceptance of the rest should usually produce: rejectedIds=[corrected item], acceptedIds=[all others].",
+    "",
+    "Examples:",
+    "- Pending: [passes, travel_restrictions, location_input]; User: 'the intermediate skiers have Epic passes, the rest of your assumptions are fine' => reject passes; accept travel_restrictions and location_input.",
+    "- Pending: [travel_restrictions, location_input]; User: 'those assumptions are valid' => accept both.",
+    "- Pending: [budget, gear_rental]; User: '$1000 pp and beginners need rentals' => reject both (user provided replacements).",
+    "",
+    `Pending assumptions JSON:\n${JSON.stringify(input.pendingAssumptions)}`,
+    "",
+    `Latest user message:\n${input.lastUserMessage}`
+  ].join("\n");
+}
+
+function sanitizeAssumptionResolution(
+  result: z.infer<typeof AssumptionResolutionSchema>,
+  knownIds: string[]
+): AssumptionResolutionResult {
+  const known = new Set(knownIds);
+  const acceptedIds = [...new Set(result.acceptedIds)].filter((id) => known.has(id));
+  const rejectedIds = [...new Set(result.rejectedIds)].filter((id) => known.has(id) && !acceptedIds.includes(id));
+  const unsureIds = [...new Set(result.unsureIds)].filter(
+    (id) => known.has(id) && !acceptedIds.includes(id) && !rejectedIds.includes(id)
   );
-  const evidenceByPath = new Map<string, string[]>();
-  for (const item of validEvidence) {
-    const list = evidenceByPath.get(item.path) ?? [];
-    list.push(item.quote);
-    evidenceByPath.set(item.path, list);
+  return { acceptedIds, rejectedIds, unsureIds };
+}
+
+function buildDateCompletionPrompt(tripSpec: TripSpec, latestUserMessage: string, currentDates: Record<string, unknown>): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    "Resolve date intent into concrete ISO date range values.",
+    "Requirements:",
+    "- Output start and end in YYYY-MM-DD when the message has enough temporal intent.",
+    "- Interpret relative phrases based on today's date.",
+    "- Preserve weekend intent when present.",
+    "- Confidence should be lower for inferred ranges.",
+    "",
+    `Today's date: ${today}`,
+    `Current TripSpec dates: ${JSON.stringify(tripSpec.dates)}`,
+    `Current extracted dates patch: ${JSON.stringify(currentDates)}`,
+    `Latest user message: ${latestUserMessage}`
+  ].join("\n");
+}
+
+function shouldAttemptDateCompletion(extraction: SpecExtractionResult): boolean {
+  if (hasValidDateRange(extraction.patch.dates?.start, extraction.patch.dates?.end)) return false;
+  const hasDatePatchHint = Boolean(
+    extraction.patch.dates &&
+      Object.keys(extraction.patch.dates).some((key) => key !== "start" && key !== "end")
+  );
+  const hasDateFieldState = extraction.fieldStates.some((state) => state.path === "dates" || state.path.startsWith("dates."));
+  const hasDateAssumption = extraction.assumptions.some((assumption) =>
+    assumption.path === "dates" || assumption.path.startsWith("dates.")
+  );
+  return hasDatePatchHint || hasDateFieldState || hasDateAssumption;
+}
+
+function hasValidDateRange(start?: string, end?: string): boolean {
+  if (!start || !end) return false;
+  const startDate = dayjs(start);
+  const endDate = dayjs(end);
+  return startDate.isValid() && endDate.isValid() && !endDate.isBefore(startDate);
+}
+
+function dedupeFieldStates(states: ExtractedFieldState[]): ExtractedFieldState[] {
+  const byPath = new Map<string, ExtractedFieldState>();
+  for (const state of states) {
+    const existing = byPath.get(state.path);
+    if (!existing || state.confidence >= existing.confidence) {
+      byPath.set(state.path, state);
+    }
   }
+  return [...byPath.values()];
+}
 
-  const allowParentEvidenceFor = new Set([
-    "dates",
-    "location",
-    "gear",
-    "budget",
-    "notes",
-    "notes.passes"
-  ]);
-
-  function evidenceFor(path: string): string[] {
-    const direct = evidenceByPath.get(path);
-    if (direct && direct.length > 0) return direct;
-    const parent = path.includes(".") ? path.split(".").slice(0, -1).join(".") : "";
-    if (parent && allowParentEvidenceFor.has(parent)) {
-      return evidenceByPath.get(parent) ?? [];
+function dedupeAssumptions(
+  assumptions: Array<{ path: string; rationale: string; confidence: number }>
+): Array<{ path: string; rationale: string; confidence: number }> {
+  const byKey = new Map<string, { path: string; rationale: string; confidence: number }>();
+  for (const assumption of assumptions) {
+    const key = `${assumption.path}:${assumption.rationale}`;
+    const existing = byKey.get(key);
+    if (!existing || assumption.confidence >= existing.confidence) {
+      byKey.set(key, assumption);
     }
-    return [];
   }
-
-  function validateLeaf(path: string, value: any): boolean {
-    const quotes = evidenceFor(path);
-    if (quotes.length === 0) return false;
-    const lowerQuotes = quotes.map((quote) => quote.toLowerCase());
-
-    if (path === "group.size") {
-      return lowerQuotes.some((quote) => /\d+/.test(quote) && /(people|ppl|persons|group|skiers|riders)/.test(quote));
-    }
-    if (path === "group.skillLevels") {
-      return lowerQuotes.some((quote) =>
-        /(beginner|intermediate|advanced|expert|mixed)/.test(quote)
-      );
-    }
-    if (path === "travel.noFlying") {
-      return lowerQuotes.some((quote) =>
-        /(no flying|can't fly|cannot fly|flying ok|flying okay|can fly)/.test(quote)
-      );
-    }
-    if (path === "location.openToSuggestions") {
-      return lowerQuotes.some((quote) => /suggest/.test(quote));
-    }
-    if (path === "dates.yearConfirmed") {
-      return lowerQuotes.some((quote) => /20\d{2}/.test(quote));
-    }
-    if (path === "dates.weekendsPreferred") {
-      return lowerQuotes.some((quote) => /(weekend|weekends|weekday|weekdays)/.test(quote));
-    }
-    if (path === "location.nearMajorAirport") {
-      return lowerQuotes.some((quote) => /airport/.test(quote));
-    }
-    if (path === "budget.perPersonMax" || path === "budget.totalMax") {
-      return lowerQuotes.some((quote) => /\$?\d+/.test(quote));
-    }
-
-    return true;
-  }
-
-  function filterObject(obj: any, currentPath: string): any {
-    if (obj === null || obj === undefined) return undefined;
-    if (Array.isArray(obj)) {
-      return validateLeaf(currentPath, obj) ? obj : undefined;
-    }
-    if (typeof obj !== "object") {
-      return validateLeaf(currentPath, obj) ? obj : undefined;
-    }
-    const result: any = Array.isArray(obj) ? [] : {};
-    let hasAny = false;
-    for (const [key, value] of Object.entries(obj)) {
-      const nextPath = currentPath ? `${currentPath}.${key}` : key;
-      const filtered = filterObject(value, nextPath);
-      if (filtered !== undefined) {
-        result[key] = filtered;
-        hasAny = true;
-      }
-    }
-    return hasAny ? result : undefined;
-  }
-
-  const filtered = filterObject(patch, "");
-  return (filtered ?? {}) as TripSpecPatch;
+  return [...byKey.values()];
 }

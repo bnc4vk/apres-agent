@@ -27,6 +27,7 @@ export type ConversationSnapshot = {
 export type ConversationStore = {
   getOrCreateSession(sessionId?: string | null): Promise<StoredSession>;
   getOrCreateConversation(sessionPk: string): Promise<StoredConversation>;
+  getConversationById(conversationId: string): Promise<StoredConversation | null>;
   listMessages(conversationId: string): Promise<ChatTurn[]>;
   appendMessages(conversationId: string, messages: ChatTurn[]): Promise<void>;
   resetConversation(conversationId: string, tripSpec: TripSpec, messages: ChatTurn[]): Promise<void>;

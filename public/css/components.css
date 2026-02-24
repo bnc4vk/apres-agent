@@ -151,6 +151,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 6px;
 }
 
@@ -164,6 +166,33 @@
   color: #1b547d;
   text-decoration: none;
   font-weight: 600;
+}
+
+.source-line {
+  font-size: 0.8rem;
+  color: #3e6583;
+}
+
+.small-muted {
+  font-size: 0.8rem;
+  color: #58788f;
+}
+
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.matrix-table th,
+.matrix-table td {
+  border-bottom: 1px solid rgba(90, 132, 165, 0.18);
+  padding: 6px;
+  text-align: left;
+}
+
+.matrix-table tr.locked {
+  background: rgba(202, 237, 255, 0.48);
 }
 
 .chat-form input {

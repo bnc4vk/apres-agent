@@ -1,13 +1,15 @@
 # Apres AI
 
-Apres AI is a ski-trip planning webapp with a chat-first planner, itinerary options, budget feasibility checks, organizer linkouts, and Google Sheets export.
+Apres AI is a ski-trip planning webapp with a chat-first planner, trip-scoped APIs, live/estimated supplier optioning, organizer automation workflows, and Google Sheets Ops Board export.
 
 ## What it does
-- Captures trip constraints into a structured `TripSpec`.
+- Captures trip constraints into `TripSpecV2` (group composition, lodging/dining constraints, organizer ops).
 - Runs deterministic missing-field progression with soft assumption mode.
-- Generates 2–3 itinerary options with organizer action links.
+- Generates 2–3 itinerary options with decision matrix scoring + lock/recompute flow.
+- Pulls live-or-estimated lodging/car/POI options through provider abstractions with provenance labels.
 - Runs a budget graph over pass/travel/food/gear/housing and flags unrealistic constraints.
-- Exports plans to Google Sheets.
+- Supports trip APIs (`/api/trips/*`) for refresh, integrations bootstrap, and trip export.
+- Exports an Ops Board Google Sheet (Decision Matrix, Vendors, Tasks, Costs, Comms).
 
 ## Quick start
 ```bash
@@ -39,7 +41,8 @@ npm run build
   - `itinerary.ts`, `itineraryExpansion.ts`, `decision.ts`, `poi.ts`, `snow.ts`, `tripSpec.ts`.
   - `resorts.ts`: resort dataset.
   - `resortRanking.ts`: shortlist/ranking logic.
-- `src/integrations/`: External provider adapters (Google OAuth/Sheets, SERP pricing).
+- `src/integrations/`: External provider adapters (Google OAuth/Sheets/Places v1, Booking Demand, Splitwise, Twilio, SERP fallback).
+- `src/providers/`: Provider abstraction layer (`LodgingProvider`, `CarProvider`, `PoiProvider`).
 - `src/persistence/`: memory + Supabase stores.
 - `src/http/`, `src/security/`, `src/tools/`: shared utilities.
 
@@ -59,9 +62,12 @@ npm run build
 ## Environment variables
 - LLM: `LLM_PROVIDER`, `MISTRAL_API_KEY`, `MISTRAL_LARGE_MODEL`
 - App/security: `BASE_URL`, `SESSION_SECRET`, `TOKEN_ENC_KEY`
-- Persistence: `SUPABASE_URL`, `SUPABASE_API_KEY`, `PERSISTENCE_DRIVER`
+- Persistence: `SUPABASE_URL`, `SUPABASE_API_KEY`, `PERSISTENCE_DRIVER`, `CHAT_PERSISTENCE_ENABLED`
 - Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_PLACES_API_KEY`
-- Pricing: `SERPAPI_KEY` (optional, live pricing fallback)
+- Pricing: `SERPAPI_KEY` (optional fallback)
+- Booking: `BOOKING_API_KEY`, `BOOKING_API_BASE_URL`
+- Splitwise: `SPLITWISE_ACCESS_TOKEN`, `SPLITWISE_API_BASE_URL`
+- Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_CONVERSATIONS_SERVICE_SID`
 
 ## Developer notes
 - Keep files under ~300 lines where practical; split by concern when growing.

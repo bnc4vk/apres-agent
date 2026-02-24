@@ -1,5 +1,11 @@
 import {
+  bootstrapSplitwise,
+  bootstrapTripChat,
+  createTripRecord,
+  exportTripSheets,
   fetchSession,
+  patchTripSpec,
+  refreshTripOptions,
   requestItineraryExpansion,
   requestNewChat,
   requestSheetsExport,
@@ -16,8 +22,10 @@ const sendBtn = form?.querySelector("button[type='submit']");
 const pageSubhead = document.getElementById("page-subhead");
 
 let sessionId = null;
+let tripId = null;
 let inFlight = false;
 const state = {
+  tripId: null,
   decisionPackage: null,
   sheetUrl: null,
   googleLinked: false,
@@ -35,15 +43,25 @@ const renderer = createRenderer({
   sendBtn,
   pageSubhead,
   onExpand: expandItinerary,
-  onExport: exportToSheets
+  onExport: exportToSheets,
+  onRefresh: handleRefreshOptions,
+  onLock: handleLockItinerary,
+  onBootstrapSplitwise: handleBootstrapSplitwise,
+  onBootstrapChat: handleBootstrapChat
 });
 
 export async function initApp() {
   parseGoogleStatus();
   const data = await fetchSession();
   sessionId = data.sessionId ?? null;
+  tripId = data.tripId ?? null;
+
+  if (!tripId) {
+    const trip = await createTripRecord(sessionId);
+    tripId = trip.tripId ?? tripId;
+  }
   renderer.renderMessages(data.messages ?? []);
-  updateState(data);
+  updateState({ ...data, tripId });
 
   if (googleStatus === "blocked") {
     renderer.appendGoogleBlockedMessage(googleReason);
@@ -70,6 +88,8 @@ function parseGoogleStatus() {
 }
 
 function updateState(data) {
+  state.tripId = data.tripId ?? state.tripId;
+  tripId = state.tripId;
   state.decisionPackage = data.decisionPackage ?? null;
   state.sheetUrl = data.sheetUrl ?? null;
   state.googleLinked = Boolean(data.googleLinked);
@@ -102,6 +122,7 @@ async function onSubmit(event) {
   try {
     const data = await sendChatMessage(sessionId, message);
     sessionId = data.sessionId ?? sessionId;
+    tripId = data.tripId ?? tripId;
 
     const elapsed = performance.now() - startedAt;
     const minDelayMs = data.replyKind === "final" ? 1200 : 650;
@@ -115,7 +136,7 @@ async function onSubmit(event) {
     } else {
       renderer.addMessage("assistant", data.reply);
     }
-    updateState(data);
+    updateState({ ...data, tripId });
   } catch (error) {
     typing.remove();
     renderer.addMessage("assistant", "Something went wrong. Please try again.");
@@ -132,8 +153,9 @@ async function startNewChat() {
   try {
     const data = await requestNewChat(sessionId);
     sessionId = data.sessionId ?? sessionId;
+    tripId = data.tripId ?? tripId;
     renderer.renderMessages(data.messages ?? []);
-    updateState(data);
+    updateState({ ...data, tripId });
   } catch (error) {
     renderer.addMessage("assistant", "Couldn't start a new chat right now.");
     console.error(error);
@@ -151,7 +173,7 @@ async function expandItinerary(itineraryId) {
     } else if (data.reply) {
       renderer.addMessage("assistant", data.reply);
     }
-    updateState(data);
+    updateState({ ...data, tripId: data.tripId ?? tripId });
   } catch (error) {
     renderer.addMessage("assistant", "I couldn't expand that option yet. Please try again.");
     console.error(error);
@@ -166,7 +188,7 @@ async function exportToSheets() {
   }
 
   try {
-    const data = await requestSheetsExport(sessionId);
+    const data = state.tripId ? await exportTripSheets(state.tripId) : await requestSheetsExport(sessionId);
     if (data.sheetUrl) {
       state.sheetUrl = data.sheetUrl;
       renderer.renderActions(state);
@@ -175,5 +197,97 @@ async function exportToSheets() {
   } catch (error) {
     renderer.addMessage("assistant", "I couldn't export the sheet yet. Please try again.");
     console.error(error);
+  }
+}
+
+async function handleRefreshOptions() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await refreshTripOptions(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: state.sheetUrl,
+      googleLinked: state.googleLinked
+    });
+    renderer.addMessage("assistant", "Refreshed live options and scoring.");
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't refresh options right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleLockItinerary(itinerary) {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    await patchTripSpec(tripId, {
+      locks: {
+        lockedItineraryId: itinerary.id,
+        lockedResortName: itinerary.resortName,
+        lockedStartDate: itinerary.dateRange?.start,
+        lockedEndDate: itinerary.dateRange?.end
+      }
+    });
+    const refreshed = await refreshTripOptions(tripId);
+    updateState({
+      tripId: refreshed.tripId ?? tripId,
+      decisionPackage: refreshed.decisionPackage,
+      tripSpec: refreshed.tripSpec,
+      sheetUrl: state.sheetUrl,
+      googleLinked: state.googleLinked
+    });
+    renderer.addMessage("assistant", `Locked ${itinerary.resortName} and recomputed remaining options.`);
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't lock that option yet.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleBootstrapSplitwise() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await bootstrapSplitwise(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: state.sheetUrl,
+      googleLinked: state.googleLinked
+    });
+    renderer.addMessage("assistant", "Splitwise bootstrap completed for this trip.");
+  } catch (error) {
+    renderer.addMessage("assistant", "Splitwise bootstrap failed.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleBootstrapChat() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await bootstrapTripChat(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: state.sheetUrl,
+      googleLinked: state.googleLinked
+    });
+    renderer.addMessage("assistant", "Group chat bootstrap completed for this trip.");
+  } catch (error) {
+    renderer.addMessage("assistant", "Group chat bootstrap failed.");
+    console.error(error);
+  } finally {
+    setBusy(false);
   }
 }
