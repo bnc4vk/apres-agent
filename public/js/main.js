@@ -37,6 +37,9 @@ const input = document.getElementById("chat-input");
 const newChatBtn = document.getElementById("new-chat-btn");
 const sendBtn = form?.querySelector("button[type='submit']");
 const pageSubhead = document.getElementById("page-subhead");
+const dateRangePicker = document.getElementById("trip-date-range-picker");
+const startDateField = document.getElementById("trip-start-date");
+const endDateField = document.getElementById("trip-end-date");
 
 let sessionId = null;
 let tripId = null;
@@ -54,6 +57,10 @@ let googleReason = null;
 const sharedFieldLabels = {};
 let currentScreen = "intake";
 let loadingTicker = null;
+let datePickerMonthCursor = null;
+
+const DATE_PICKER_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
+const DATE_PICKER_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 
 const LOADING_MESSAGES = [
   "Reviewing trip constraints and building ranked itinerary candidates.",
@@ -91,6 +98,7 @@ const renderer = createRenderer({
 
 export async function initApp() {
   parseGoogleStatus();
+  setupIntakeFormUi();
   try {
     Object.assign(sharedFieldLabels, await fetchFieldLabels());
   } catch (error) {
@@ -693,20 +701,18 @@ function buildTripPatchFromIntakeForm() {
   const end = String(fd.get("end_date") || "").trim();
   const groupSize = parseOptionalNumber(fd.get("group_size"));
   const perPersonMax = parseOptionalNumber(fd.get("budget_per_person"));
-  const budgetBand = String(fd.get("budget_band") || "").trim();
-  const roomingStyle = String(fd.get("rooming_style") || "").trim();
-  const travelMode = String(fd.get("travel_mode") || "flexible");
-  const arrivalAirport = String(fd.get("arrival_airport") || "").trim();
+  const riderType = String(fd.get("group_rider_mix") || "").trim();
+  const lodgingStylePreference = String(fd.get("lodging_style_preference") || "").trim();
+  const travelMode = String(fd.get("travel_mode") || "").trim();
   const destinationPreference = String(fd.get("destination_preference") || "").trim();
   const maxDriveHours = parseOptionalNumber(fd.get("max_drive_hours"));
   const minBedrooms = parseOptionalNumber(fd.get("min_bedrooms"));
   const maxWalkMinutes = parseOptionalNumber(fd.get("max_walk_minutes"));
   const rentalCount = parseOptionalNumber(fd.get("rental_count"));
-  const rentalRequiredRaw = String(fd.get("rental_required") || "unknown");
-  const lodgingConstraintModeRaw = String(fd.get("lodging_constraint_mode") || "soft");
-  const plannerNotes = String(fd.get("planner_notes") || "").trim();
-  const passPreset = String(fd.get("pass_preset") || "unknown");
-  const passNotes = String(fd.get("pass_notes") || "").trim();
+  const rentalRequiredRaw = String(fd.get("rental_required") || "").trim();
+  const rentalType = String(fd.get("rental_type") || "").trim();
+  const passPreset = String(fd.get("pass_preset") || "").trim();
+  const passBreakdown = String(fd.get("pass_breakdown") || "").trim();
   const openToSuggestions = fd.get("open_to_suggestions") === "on";
   const hotTubRequired = fd.get("hot_tub_required") === "on";
   const kitchenRequired = fd.get("kitchen_required") === "on";
@@ -725,8 +731,14 @@ function buildTripPatchFromIntakeForm() {
   if (!perPersonMax || perPersonMax < 1) {
     return { ok: false, error: "Enter a per-person budget." };
   }
+  if (travelMode === "mixed_driver_required" && groupSize < 2) {
+    return { ok: false, error: "Mixed fly/drive mode requires at least 2 travelers." };
+  }
   if (!openToSuggestions && !destinationPreference) {
     return { ok: false, error: "Add a destination/region preference or enable destination suggestions." };
+  }
+  if (passPreset === "explicit_breakdown" && !passBreakdown) {
+    return { ok: false, error: "Add a pass breakdown or choose a preset pass ownership option." };
   }
 
   const dayCount = calculateTripLengthDays(start, end);
@@ -734,28 +746,35 @@ function buildTripPatchFromIntakeForm() {
     return { ok: false, error: "End date must be on or after start date." };
   }
 
+  const roomingStyle = mapLodgingStylePreferenceToRoomingStyle(lodgingStylePreference);
+  const mixedDriverRequired = travelMode === "mixed_driver_required";
+  const gearPatch = buildGearPatch(rentalRequiredRaw, rentalCount, rentalType);
+  const passPatch = buildPassPatch(passPreset, passBreakdown, groupSize);
+
   const patch = {
     group: {
       size: groupSize,
       skillLevels,
-      notes: plannerNotes || undefined
+      riderType: isValidRiderType(riderType) ? riderType : undefined
     },
     groupComposition: {
       roomingStyle: roomingStyle || undefined,
       confirmed: Boolean(roomingStyle) || undefined
     },
-    gear: buildGearPatch(rentalRequiredRaw, rentalCount),
+    gear: gearPatch,
     budget: {
       perPersonMax,
-      band: budgetBand || undefined,
       currency: "USD",
       confirmed: true
     },
     travel: {
-      noFlying: travelMode === "drive_only",
+      noFlying: travelMode ? travelMode === "drive_only" : undefined,
       maxDriveHours: maxDriveHours || undefined,
-      arrivalAirport: arrivalAirport || undefined,
-      confirmed: true
+      arrivalAirport: undefined,
+      canFlyCount: mixedDriverRequired ? Math.max(0, groupSize - 1) : undefined,
+      cannotFlyCount: mixedDriverRequired ? 1 : undefined,
+      restrictions: mixedDriverRequired ? ["At least one traveler must drive"] : undefined,
+      confirmed: travelMode || maxDriveHours ? true : undefined
     },
     dates: {
       start,
@@ -770,25 +789,20 @@ function buildTripPatchFromIntakeForm() {
       confirmed: true
     },
     lodgingConstraints: {
-      constraintMode: lodgingConstraintModeRaw === "none" ? undefined : lodgingConstraintModeRaw,
+      constraintMode: "soft",
       minBedrooms: minBedrooms || undefined,
       maxWalkMinutesToLift: maxWalkMinutes || undefined,
       hotTubRequired: hotTubRequired || undefined,
       kitchenRequired: kitchenRequired || undefined,
       laundryRequired: laundryRequired || undefined,
-      confirmed: lodgingConstraintModeRaw === "hard" ? true : undefined
+      confirmed: true
     },
     organizerOps: {
       confirmed: true
     },
-    travelers:
-      travelMode === "drive_only" || Boolean(maxDriveHours)
-        ? {
-            pods: [{ origin: arrivalAirport || "Shared departure area", count: groupSize }]
-          }
-        : undefined,
+    travelers: buildTravelersPatch(travelMode, groupSize, maxDriveHours),
     notes: {
-      passes: buildPassPatch(passPreset, passNotes, groupSize)
+      passes: passPatch
     }
   };
 
@@ -802,56 +816,55 @@ function intakeFormSkillLevels() {
     .filter(Boolean);
 }
 
-function buildGearPatch(rentalRequiredRaw, rentalCount) {
+function buildGearPatch(rentalRequiredRaw, rentalCount, rentalType) {
+  const normalizedRentalType = isValidRentalType(rentalType) ? rentalType : undefined;
+  if (!rentalRequiredRaw && !normalizedRentalType && !rentalCount) {
+    return undefined;
+  }
   if (rentalRequiredRaw === "yes") {
     return {
       rentalRequired: true,
       rentalCount: rentalCount || undefined,
+      rentalType: normalizedRentalType,
       confirmed: true
     };
   }
   if (rentalRequiredRaw === "no") {
     return {
       rentalRequired: false,
+      rentalType: normalizedRentalType,
       confirmed: true
     };
   }
   return {
     rentalCount: rentalCount || undefined,
+    rentalType: normalizedRentalType,
     confirmed: true
   };
 }
 
-function buildPassPatch(passPreset, passNotes, groupSize) {
+function buildPassPatch(passPreset, passBreakdown, groupSize) {
+  if (!passPreset) return undefined;
   if (passPreset === "ikon") {
     return {
       ikonCount: groupSize,
-      notes: passNotes || "Mostly Ikon passholders.",
       confirmed: true
     };
   }
   if (passPreset === "epic") {
     return {
       epicCount: groupSize,
-      notes: passNotes || "Mostly Epic passholders.",
       confirmed: true
     };
   }
-  if (passPreset === "mixed") {
+  if (passPreset === "explicit_breakdown") {
     return {
-      notes: passNotes || "Mixed pass ownership in the group.",
-      confirmed: true
-    };
-  }
-  if (passPreset === "unknown") {
-    return {
-      notes: passNotes || "Pass ownership is unknown.",
+      notes: passBreakdown || undefined,
       confirmed: true
     };
   }
   return {
     noPassCount: groupSize,
-    notes: passNotes || "No ski passes owned.",
     confirmed: true
   };
 }
@@ -860,37 +873,38 @@ function hydrateIntakeForm(spec) {
   if (!intakeForm) return;
   intakeForm.reset();
 
-  if (!spec) return;
+  if (!spec) {
+    syncIntakeFormUi();
+    return;
+  }
 
   setFormControlValue("start_date", spec.dates?.start || "");
   setFormControlValue("end_date", spec.dates?.end || "");
   setFormControlValue("group_size", spec.group?.size ?? "");
   setFormControlValue("budget_per_person", spec.budget?.perPersonMax ?? "");
-  setFormControlValue("budget_band", spec.budget?.band || "mid");
-  setFormControlValue("rooming_style", spec.groupComposition?.roomingStyle || "");
-  setFormControlValue("arrival_airport", spec.travel?.arrivalAirport || "");
+  setFormControlValue("group_rider_mix", isValidRiderType(spec.group?.riderType) ? spec.group.riderType : "");
+  setFormControlValue(
+    "lodging_style_preference",
+    mapRoomingStyleToLodgingStylePreference(spec.groupComposition?.roomingStyle || "")
+  );
   setFormControlValue("destination_preference", spec.location?.resort || spec.location?.region || "");
   setFormControlValue("max_drive_hours", spec.travel?.maxDriveHours ?? "");
   setFormControlValue("min_bedrooms", spec.lodgingConstraints?.minBedrooms ?? "");
   setFormControlValue("max_walk_minutes", spec.lodgingConstraints?.maxWalkMinutesToLift ?? "");
   setFormControlValue("rental_count", spec.gear?.rentalCount ?? "");
-  setFormControlValue("planner_notes", spec.group?.notes || "");
-  setFormControlValue("pass_notes", spec.notes?.passes?.notes || "");
+  setFormControlValue("rental_type", isValidRentalType(spec.gear?.rentalType) ? spec.gear.rentalType : "");
+  setFormControlValue("pass_breakdown", spec.notes?.passes?.notes || "");
 
-  setCheckboxValue("open_to_suggestions", spec.location?.openToSuggestions ?? true);
+  setCheckboxValue("open_to_suggestions", spec.location?.openToSuggestions ?? false);
   setCheckboxValue("hot_tub_required", Boolean(spec.lodgingConstraints?.hotTubRequired));
-  setCheckboxValue("kitchen_required", spec.lodgingConstraints?.kitchenRequired ?? true);
+  setCheckboxValue("kitchen_required", spec.lodgingConstraints?.kitchenRequired ?? false);
   setCheckboxValue("laundry_required", Boolean(spec.lodgingConstraints?.laundryRequired));
 
-  const travelMode = spec.travel?.noFlying ? "drive_only" : "flexible";
-  setFormControlValue("travel_mode", travelMode);
+  setFormControlValue("travel_mode", inferTravelMode(spec));
 
   const rentalRequired =
-    spec.gear?.rentalRequired === true ? "yes" : spec.gear?.rentalRequired === false ? "no" : "unknown";
+    spec.gear?.rentalRequired === true ? "yes" : spec.gear?.rentalRequired === false ? "no" : "";
   setFormControlValue("rental_required", rentalRequired);
-
-  const lodgingMode = spec.lodgingConstraints?.constraintMode || "soft";
-  setFormControlValue("lodging_constraint_mode", lodgingMode);
 
   const preset = inferPassPreset(spec);
   setFormControlValue("pass_preset", preset);
@@ -898,23 +912,42 @@ function hydrateIntakeForm(spec) {
   const selectedSkills = new Set(
     Array.isArray(spec.group?.skillLevels) && spec.group.skillLevels.length > 0
       ? spec.group.skillLevels
-      : ["intermediate", "advanced"]
+      : []
   );
   intakeForm.querySelectorAll("input[name='skill_levels']").forEach((el) => {
     el.checked = selectedSkills.has(el.value);
   });
+
+  syncIntakeFormUi();
 }
 
 function inferPassPreset(spec) {
   const passes = spec?.notes?.passes;
   const groupSize = spec?.group?.size;
-  if (!passes) return "none";
+  if (!passes) return "";
   if (groupSize && passes.ikonCount && passes.ikonCount >= groupSize) return "ikon";
   if (groupSize && passes.epicCount && passes.epicCount >= groupSize) return "epic";
   if (groupSize && passes.noPassCount && passes.noPassCount >= groupSize) return "none";
-  if (passes.notes && /unknown/i.test(passes.notes)) return "unknown";
-  if (passes.notes || passes.otherPasses?.length) return "mixed";
-  return "unknown";
+  if (passes.notes || passes.otherPasses?.length) return "explicit_breakdown";
+  return "";
+}
+
+function inferTravelMode(spec) {
+  if (spec?.travel?.noFlying) return "drive_only";
+  if ((spec?.travel?.cannotFlyCount ?? 0) >= 1 && (spec?.travel?.canFlyCount ?? 0) >= 1) {
+    return "mixed_driver_required";
+  }
+  if (
+    spec?.travel?.confirmed ||
+    spec?.travel?.noFlying === false ||
+    typeof spec?.travel?.maxDriveHours === "number" ||
+    typeof spec?.travel?.canFlyCount === "number" ||
+    typeof spec?.travel?.cannotFlyCount === "number" ||
+    (Array.isArray(spec?.travel?.restrictions) && spec.travel.restrictions.length > 0)
+  ) {
+    return "flexible";
+  }
+  return "";
 }
 
 function setFormControlValue(name, value) {
@@ -932,6 +965,273 @@ function setCheckboxValue(name, checked) {
   if (field && "checked" in field) {
     field.checked = Boolean(checked);
   }
+}
+
+function setupIntakeFormUi() {
+  if (!intakeForm || intakeForm.dataset.uiBound === "true") {
+    syncIntakeFormUi();
+    return;
+  }
+  intakeForm.dataset.uiBound = "true";
+
+  const passPresetField = intakeForm.elements.namedItem("pass_preset");
+  if (passPresetField && "addEventListener" in passPresetField) {
+    passPresetField.addEventListener("change", syncIntakeFormUi);
+  }
+
+  if (startDateField && "addEventListener" in startDateField) {
+    startDateField.addEventListener("change", () => syncDateRangePicker(true));
+  }
+  if (endDateField && "addEventListener" in endDateField) {
+    endDateField.addEventListener("change", () => syncDateRangePicker(true));
+  }
+
+  if (dateRangePicker) {
+    dateRangePicker.addEventListener("click", onDateRangePickerClick);
+  }
+
+  syncIntakeFormUi();
+}
+
+function syncIntakeFormUi() {
+  syncPassBreakdownField();
+  syncDateRangePicker();
+}
+
+function syncPassBreakdownField() {
+  if (!intakeForm) return;
+  const presetField = intakeForm.elements.namedItem("pass_preset");
+  const wrapper = document.getElementById("pass-breakdown-field");
+  if (!presetField || !wrapper) return;
+  const show = "value" in presetField && presetField.value === "explicit_breakdown";
+  wrapper.hidden = !show;
+  wrapper.querySelectorAll("textarea, input").forEach((el) => {
+    el.disabled = !show;
+  });
+}
+
+function buildTravelersPatch(travelMode, groupSize, maxDriveHours) {
+  if (travelMode === "drive_only" || (travelMode === "flexible" && Boolean(maxDriveHours))) {
+    return {
+      pods: [{ origin: "Driving group", count: groupSize }]
+    };
+  }
+
+  if (travelMode === "mixed_driver_required") {
+    const flyers = Math.max(0, groupSize - 1);
+    return {
+      pods: flyers > 0 ? [{ origin: "Driving group", count: 1 }, { origin: "Fly-in group", count: flyers }] : [{ origin: "Driving group", count: 1 }]
+    };
+  }
+
+  return undefined;
+}
+
+function mapLodgingStylePreferenceToRoomingStyle(preference) {
+  if (preference === "shared_house") return "couples";
+  if (preference === "separate_rooms") return "singles";
+  if (preference === "flexible") return "hybrid";
+  return undefined;
+}
+
+function mapRoomingStyleToLodgingStylePreference(roomingStyle) {
+  if (roomingStyle === "couples") return "shared_house";
+  if (roomingStyle === "singles") return "separate_rooms";
+  if (roomingStyle === "hybrid") return "flexible";
+  return "";
+}
+
+function isValidRiderType(value) {
+  return value === "skiers" || value === "snowboarders" || value === "hybrid";
+}
+
+function isValidRentalType(value) {
+  return value === "skiers" || value === "snowboarders" || value === "both";
+}
+
+function onDateRangePickerClick(event) {
+  if (!dateRangePicker) return;
+  const target = event.target instanceof HTMLElement ? event.target.closest("button") : null;
+  if (!target) return;
+  if (target.dataset.nav === "prev") {
+    datePickerMonthCursor = addCalendarMonths(getDatePickerAnchorMonth(), -1);
+    renderDateRangePicker();
+    return;
+  }
+  if (target.dataset.nav === "next") {
+    datePickerMonthCursor = addCalendarMonths(getDatePickerAnchorMonth(), 1);
+    renderDateRangePicker();
+    return;
+  }
+  if (target.dataset.date) {
+    applyDateRangeSelection(target.dataset.date);
+  }
+}
+
+function syncDateRangePicker(preferSelectedMonth = false) {
+  if (!dateRangePicker) return;
+  const selected = getSelectedDateRange();
+  if (!datePickerMonthCursor || preferSelectedMonth) {
+    datePickerMonthCursor = startOfCalendarMonth(selected.start || new Date());
+  }
+  renderDateRangePicker();
+}
+
+function renderDateRangePicker() {
+  if (!dateRangePicker) return;
+  const anchorMonth = getDatePickerAnchorMonth();
+  const nextMonth = addCalendarMonths(anchorMonth, 1);
+  const selected = getSelectedDateRange();
+
+  dateRangePicker.innerHTML = `
+    <div class="date-range-picker-header">
+      <button type="button" class="date-nav-btn" data-nav="prev" aria-label="Show previous month">&#8249;</button>
+      <strong>Select date range</strong>
+      <button type="button" class="date-nav-btn" data-nav="next" aria-label="Show next month">&#8250;</button>
+    </div>
+    <div class="date-picker-months">
+      ${renderDatePickerMonth(anchorMonth, selected)}
+      ${renderDatePickerMonth(nextMonth, selected)}
+    </div>
+  `;
+}
+
+function renderDatePickerMonth(monthDate, selected) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const weekdayLabels = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(2024, 0, 7 + i);
+    return `<span>${DATE_PICKER_DAY_FORMATTER.format(date).slice(0, 2)}</span>`;
+  }).join("");
+
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i += 1) {
+    cells.push('<button type="button" class="date-day is-empty" tabindex="-1" disabled></button>');
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = new Date(year, month, day);
+    const iso = formatIsoDate(date);
+    const classNames = ["date-day"];
+    if (isTodayDate(date)) classNames.push("is-today");
+    if (isDateInRange(date, selected.start, selected.end)) classNames.push("is-in-range");
+    if (selected.start && sameCalendarDate(date, selected.start)) classNames.push("is-start");
+    if (selected.end && sameCalendarDate(date, selected.end)) classNames.push("is-end");
+    if (selected.start && !selected.end && sameCalendarDate(date, selected.start)) {
+      classNames.push("is-selected");
+    }
+    if (selected.start && selected.end && sameCalendarDate(selected.start, selected.end) && sameCalendarDate(date, selected.start)) {
+      classNames.push("is-selected");
+    }
+    cells.push(
+      `<button type="button" class="${classNames.join(" ")}" data-date="${iso}" aria-label="${DATE_PICKER_MONTH_FORMATTER.format(date)} ${day}">${day}</button>`
+    );
+  }
+
+  return `
+    <section class="date-picker-month" aria-label="${DATE_PICKER_MONTH_FORMATTER.format(monthDate)}">
+      <p class="date-picker-month-title">${DATE_PICKER_MONTH_FORMATTER.format(monthDate)}</p>
+      <div class="date-picker-weekdays">${weekdayLabels}</div>
+      <div class="date-picker-days">${cells.join("")}</div>
+    </section>
+  `;
+}
+
+function applyDateRangeSelection(isoDate) {
+  if (!startDateField || !endDateField) return;
+  const clicked = parseIsoDate(isoDate);
+  if (!clicked) return;
+
+  const current = getSelectedDateRange();
+  if (!current.start || (current.start && current.end)) {
+    startDateField.value = formatIsoDate(clicked);
+    endDateField.value = "";
+    syncDateRangePicker(true);
+    return;
+  }
+
+  const start = current.start;
+  if (compareCalendarDates(clicked, start) < 0) {
+    startDateField.value = formatIsoDate(clicked);
+    endDateField.value = formatIsoDate(start);
+  } else {
+    startDateField.value = formatIsoDate(start);
+    endDateField.value = formatIsoDate(clicked);
+  }
+  syncDateRangePicker(true);
+}
+
+function getSelectedDateRange() {
+  const start = parseIsoDate(startDateField && "value" in startDateField ? startDateField.value : "");
+  const end = parseIsoDate(endDateField && "value" in endDateField ? endDateField.value : "");
+  if (start && end && compareCalendarDates(end, start) < 0) {
+    return { start: end, end: start };
+  }
+  return { start, end };
+}
+
+function getDatePickerAnchorMonth() {
+  return datePickerMonthCursor ? startOfCalendarMonth(datePickerMonthCursor) : startOfCalendarMonth(new Date());
+}
+
+function parseIsoDate(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function formatIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfCalendarMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addCalendarMonths(date, delta) {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
+}
+
+function sameCalendarDate(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function compareCalendarDates(a, b) {
+  const aKey = a.getFullYear() * 10000 + (a.getMonth() + 1) * 100 + a.getDate();
+  const bKey = b.getFullYear() * 10000 + (b.getMonth() + 1) * 100 + b.getDate();
+  return aKey - bKey;
+}
+
+function isDateInRange(date, start, end) {
+  if (!start || !end) return false;
+  return compareCalendarDates(date, start) > 0 && compareCalendarDates(date, end) < 0;
+}
+
+function isTodayDate(date) {
+  const today = new Date();
+  return sameCalendarDate(date, today);
 }
 
 function parseOptionalNumber(value) {

@@ -19,6 +19,12 @@ export type ConstraintMode = z.infer<typeof ConstraintModeSchema>;
 export const RoomingStyleSchema = z.enum(["couples", "singles", "hybrid"]);
 export type RoomingStyle = z.infer<typeof RoomingStyleSchema>;
 
+export const RiderTypeSchema = z.enum(["skiers", "snowboarders", "hybrid"]);
+export type RiderType = z.infer<typeof RiderTypeSchema>;
+
+export const RentalTypeSchema = z.enum(["skiers", "snowboarders", "both"]);
+export type RentalType = z.infer<typeof RentalTypeSchema>;
+
 export const FieldConfidenceStatusSchema = z.enum(["confirmed", "assumed", "unresolved"]);
 export type FieldConfidenceStatus = z.infer<typeof FieldConfidenceStatusSchema>;
 
@@ -81,6 +87,7 @@ export const TripSpecSchema = z.object({
   group: z.object({
     size: z.number().int().positive().optional(),
     skillLevels: z.array(SkillLevelSchema).optional(),
+    riderType: RiderTypeSchema.optional(),
     notes: z.string().optional()
   }),
   groupComposition: z.object({
@@ -92,6 +99,7 @@ export const TripSpecSchema = z.object({
   gear: z.object({
     rentalRequired: z.boolean().optional(),
     rentalCount: z.number().int().positive().optional(),
+    rentalType: RentalTypeSchema.optional(),
     rentalShare: z.number().min(0).max(1).optional(),
     rentalNotes: z.string().optional(),
     confirmed: z.boolean().optional()
