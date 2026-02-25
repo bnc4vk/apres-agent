@@ -3,7 +3,8 @@ import { appConfig, assertGoogleOAuthConfig } from "../../config/appConfig";
 
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive.file"
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/calendar.events"
 ];
 
 export function createOAuthClient() {

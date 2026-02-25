@@ -47,6 +47,8 @@ function authHeaders(): HeadersInit {
   };
 }
 
+const BOOKING_FETCH_TIMEOUT_MS = 8000;
+
 export async function searchBookingLodging(input: BookingLodgingSearchInput): Promise<BookingLodgingResult[] | null> {
   if (!hasConfig()) return null;
 
@@ -66,7 +68,8 @@ export async function searchBookingLodging(input: BookingLodgingSearchInput): Pr
     const response = await fetch(url.toString(), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: timeoutSignal(BOOKING_FETCH_TIMEOUT_MS)
     });
     if (!response.ok) return null;
     const payload = (await response.json()) as any;
@@ -98,7 +101,8 @@ export async function searchBookingCars(input: BookingCarSearchInput): Promise<B
         pick_up: { location: input.airportCode, date: input.pickupDate },
         drop_off: { location: input.airportCode, date: input.dropoffDate },
         currency: "USD"
-      })
+      }),
+      signal: timeoutSignal(BOOKING_FETCH_TIMEOUT_MS)
     });
     if (!response.ok) return null;
     const payload = (await response.json()) as any;
@@ -114,6 +118,12 @@ export async function searchBookingCars(input: BookingCarSearchInput): Promise<B
   } catch {
     return null;
   }
+}
+
+function timeoutSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
 }
 
 function parseWalkMinutes(distanceMeters: unknown): number | null {

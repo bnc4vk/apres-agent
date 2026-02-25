@@ -1,4 +1,3 @@
-import { ChatSession } from "./engine";
 import { getConversationStore } from "../adapters/persistence";
 import { WELCOME_MESSAGE } from "./welcome";
 import { ConversationSnapshot } from "../adapters/persistence/store";
@@ -46,15 +45,6 @@ export async function loadConversationByTripId(tripId: string): Promise<LoadedCo
     conversation,
     messages,
     googleLinked
-  };
-}
-
-export function toChatSession(conversation: LoadedConversation): ChatSession {
-  return {
-    id: conversation.conversation.id,
-    tripSpec: conversation.conversation.tripSpec,
-    history: conversation.messages,
-    decisionPackage: conversation.conversation.decisionPackage ?? undefined
   };
 }
 

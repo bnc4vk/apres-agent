@@ -20,6 +20,8 @@ function hasApiKey(): boolean {
   return Boolean(appConfig.serpApiKey);
 }
 
+const SERPAPI_TIMEOUT_MS = 7000;
+
 export async function fetchLiveFlightPrice(input: FlightPriceInput): Promise<number | null> {
   if (!hasApiKey()) return null;
 
@@ -35,7 +37,7 @@ export async function fetchLiveFlightPrice(input: FlightPriceInput): Promise<num
   url.searchParams.set("gl", "us");
 
   try {
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), { signal: timeoutSignal(SERPAPI_TIMEOUT_MS) });
     if (!response.ok) return null;
     const payload: any = await response.json();
 
@@ -65,7 +67,7 @@ export async function fetchLiveHotelNightlyPrice(input: HotelPriceInput): Promis
   url.searchParams.set("gl", "us");
 
   try {
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), { signal: timeoutSignal(SERPAPI_TIMEOUT_MS) });
     if (!response.ok) return null;
     const payload: any = await response.json();
 
@@ -92,6 +94,12 @@ export async function fetchLiveHotelNightlyPrice(input: HotelPriceInput): Promis
   } catch {
     return null;
   }
+}
+
+function timeoutSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
 }
 
 function parsePrice(input: unknown): number | null {

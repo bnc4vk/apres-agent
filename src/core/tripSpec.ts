@@ -377,23 +377,27 @@ function inferPassCountsFromNotes(
     noPassCount?: number;
   } = {};
 
-  const hasNoPassPhrase = /\b(no pass|no passes|without passes?|none have passes?)\b/.test(text);
-  if (hasNoPassPhrase) {
+  const wholeGroupNoPassPhrase =
+    /\b(no one has passes?|nobody has passes?|none (?:have|has) passes?|without any passes?|everyone has no pass(?:es)?|all have no pass(?:es)?)\b/.test(
+      text
+    );
+  if (wholeGroupNoPassPhrase) {
     result.noPassCount = groupSize;
     return result;
   }
 
-  const passPatterns: Array<{ key: keyof typeof result; tokens: RegExp[] }> = [
-    { key: "ikonCount", tokens: [/\bikon\b/] },
-    { key: "epicCount", tokens: [/\bepic\b/] },
-    { key: "indyCount", tokens: [/\bindy\b/] },
-    { key: "mountainCollectiveCount", tokens: [/\bmountain collective\b/] }
+  const passPatterns: Array<{ key: keyof typeof result; label: string; tokens: RegExp[] }> = [
+    { key: "ikonCount", label: "ikon", tokens: [/\bikon\b/] },
+    { key: "epicCount", label: "epic", tokens: [/\bepic\b/] },
+    { key: "indyCount", label: "indy", tokens: [/\bindy\b/] },
+    { key: "mountainCollectiveCount", label: "mountain collective", tokens: [/\bmountain collective\b/] },
+    { key: "noPassCount", label: "no pass", tokens: [/\bno pass(?:es)?\b/] }
   ];
 
   let assigned = 0;
   for (const pattern of passPatterns) {
     if (!pattern.tokens.some((token) => token.test(text))) continue;
-    const count = inferCountNearToken(text, pattern.key.replace("Count", "").toLowerCase(), groupSize);
+    const count = inferCountNearToken(text, pattern.label, groupSize);
     if (typeof count === "number") {
       result[pattern.key] = count;
       assigned += count;

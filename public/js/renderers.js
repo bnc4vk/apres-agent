@@ -16,8 +16,14 @@ export function createRenderer({
   onExportSnapshot,
   onValidateLinks,
   onRefreshOperations,
+  onRefreshOperationsLive,
+  onSyncCalendar,
+  onExportCalendarIcs,
+  onPreviewSplitwisePlan,
+  onSendReminders,
   onApplyTemplate,
-  fieldLabels = {}
+  fieldLabels = {},
+  focusMode = false
 }) {
   function addMessage(role, content) {
     const bubble = document.createElement("div");
@@ -85,35 +91,14 @@ export function createRenderer({
     if (!state.decisionPackage) return;
     const workflow = state.decisionPackage.workflow || null;
 
-    const stageRail = renderWorkflowStageRail(workflow);
-    if (stageRail) actions.appendChild(stageRail);
-
-    const bookingReadiness = renderBookingReadiness(workflow);
-    if (bookingReadiness) actions.appendChild(bookingReadiness);
-
-    const assumptionQueue = renderAssumptionQueue(workflow);
-    if (assumptionQueue) actions.appendChild(assumptionQueue);
-
     const summary = renderBudgetSummary(state.decisionPackage?.budgetSummary);
     if (summary) actions.appendChild(summary);
 
-    const controls = renderControlRow(state);
-    if (controls) actions.appendChild(controls);
-
-    const coordination = renderCoordinationPanel(state);
-    if (coordination) actions.appendChild(coordination);
-
-    const repeatability = renderRepeatabilityPanel(state);
-    if (repeatability) actions.appendChild(repeatability);
-
-    const integrations = renderIntegrationsPanel(state);
-    if (integrations) actions.appendChild(integrations);
-
-    const operations = renderOperationsPanel(state);
-    if (operations) actions.appendChild(operations);
-
     const aiReview = renderAiReviewSummary(state.decisionPackage);
     if (aiReview) actions.appendChild(aiReview);
+
+    const controls = renderControlRow(state);
+    if (controls) actions.appendChild(controls);
 
     const matrix = renderDecisionMatrix(state.decisionPackage?.decisionMatrix);
     if (matrix) actions.appendChild(matrix);
@@ -121,11 +106,16 @@ export function createRenderer({
     const grid = document.createElement("div");
     grid.className = "card-grid";
 
-    (state.decisionPackage.itineraries ?? []).forEach((itinerary) => {
+    const itineraries = state.decisionPackage.itineraries ?? [];
+    if (itineraries.length === 0) {
+      grid.appendChild(renderNoItineraryState(state));
+    }
+
+    itineraries.forEach((itinerary) => {
       const itineraryAudit =
         workflow?.itineraryAudit?.find((item) => item.itineraryId === itinerary.id) ?? null;
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "card itinerary-card";
 
       const title = document.createElement("h3");
       title.textContent = itinerary.title;
@@ -151,7 +141,11 @@ export function createRenderer({
       const source = document.createElement("p");
       source.className = "source-line";
       const lodgingSource = itinerary.liveOptions?.lodging?.[0]?.sourceMeta?.source ?? "estimated";
-      const carSource = itinerary.liveOptions?.cars?.[0]?.sourceMeta?.source ?? "estimated";
+      const carPlanningRequested =
+        state.tripSpec?.travel?.noFlying !== true && Boolean(state.tripSpec?.travel?.arrivalAirport);
+      const carSource = carPlanningRequested
+        ? itinerary.liveOptions?.cars?.[0]?.sourceMeta?.source ?? "estimated"
+        : "n/a";
       source.textContent = `Sources: lodging ${lodgingSource}, cars ${carSource}`;
 
       const topLodging = itinerary.liveOptions?.lodging?.[0];
@@ -237,6 +231,24 @@ export function createRenderer({
 
     actions.appendChild(grid);
     actions.appendChild(renderExportRow(state));
+
+    const advancedNodes = [
+      renderWorkflowStageRail(workflow),
+      renderBookingReadiness(workflow),
+      renderAssumptionQueue(workflow),
+      renderCoordinationPanel(state),
+      renderRepeatabilityPanel(state),
+      renderIntegrationsPanel(state),
+      renderOperationsPanel(state)
+    ].filter(Boolean);
+
+    if (advancedNodes.length > 0) {
+      if (focusMode) {
+        actions.appendChild(renderAdvancedDisclosure(advancedNodes));
+      } else {
+        advancedNodes.forEach((node) => actions.appendChild(node));
+      }
+    }
   }
 
   function appendGoogleBlockedMessage(reason) {
@@ -248,6 +260,47 @@ export function createRenderer({
       "assistant",
       `Google account linking is currently blocked. ${suffix} Ask the developer to add your account as a test user or publish verification before exporting to Sheets.`
     );
+  }
+
+  function renderNoItineraryState(state) {
+    const card = document.createElement("div");
+    card.className = "card itinerary-empty-state";
+
+    const title = document.createElement("h3");
+    title.textContent = "No itinerary matches yet";
+
+    const body = document.createElement("p");
+    body.textContent =
+      "No candidate resorts matched the current filters and constraints. This often happens with very specific location text or hard lodging requirements.";
+
+    const hint = document.createElement("p");
+    hint.className = "small-muted";
+    hint.textContent =
+      "Try broadening the destination region, switching lodging constraints to soft preferences, or increasing budget.";
+
+    const specLine = document.createElement("p");
+    specLine.className = "small-muted";
+    const region = state.tripSpec?.location?.region || "any region";
+    const mode = state.tripSpec?.lodgingConstraints?.constraintMode || "none";
+    specLine.textContent = `Current filters: region ${region} • lodging constraints ${mode}`;
+
+    card.append(title, body, hint, specLine);
+    return card;
+  }
+
+  function renderAdvancedDisclosure(nodes) {
+    const wrap = document.createElement("details");
+    wrap.className = "advanced-disclosure";
+
+    const summary = document.createElement("summary");
+    summary.textContent = "Advanced planning operations";
+
+    const body = document.createElement("div");
+    body.className = "advanced-disclosure-body";
+    nodes.forEach((node) => body.appendChild(node));
+
+    wrap.append(summary, body);
+    return wrap;
   }
 
   return {
@@ -359,12 +412,51 @@ export function createRenderer({
     refreshOps.textContent = "Refresh Ops Checks";
     refreshOps.addEventListener("click", onRefreshOperations);
 
+    const refreshOpsLive = document.createElement("button");
+    refreshOpsLive.className = "ghost-btn";
+    refreshOpsLive.textContent = "Live Ops Refresh";
+    refreshOpsLive.addEventListener("click", onRefreshOperationsLive || onRefreshOperations);
+
     const snapshot = document.createElement("button");
     snapshot.className = "ghost-btn";
     snapshot.textContent = "Export Snapshot";
     snapshot.addEventListener("click", onExportSnapshot);
 
-    row.append(refresh, recomputeSame, recomputeLive, checkLinks, refreshOps, snapshot, splitwise, chatBtn);
+    const calendarSync = document.createElement("button");
+    calendarSync.className = "ghost-btn";
+    calendarSync.textContent = "Sync Calendar";
+    calendarSync.addEventListener("click", onSyncCalendar);
+
+    const calendarIcs = document.createElement("button");
+    calendarIcs.className = "ghost-btn";
+    calendarIcs.textContent = "Export Calendar ICS";
+    calendarIcs.addEventListener("click", onExportCalendarIcs);
+
+    const splitwisePlan = document.createElement("button");
+    splitwisePlan.className = "ghost-btn";
+    splitwisePlan.textContent = "Splitwise Plan";
+    splitwisePlan.addEventListener("click", onPreviewSplitwisePlan);
+
+    const sendReminders = document.createElement("button");
+    sendReminders.className = "ghost-btn";
+    sendReminders.textContent = "Send Reminders";
+    sendReminders.addEventListener("click", onSendReminders);
+
+    row.append(
+      refresh,
+      recomputeSame,
+      recomputeLive,
+      checkLinks,
+      refreshOps,
+      refreshOpsLive,
+      snapshot,
+      calendarSync,
+      calendarIcs,
+      splitwisePlan,
+      sendReminders,
+      splitwise,
+      chatBtn
+    );
     return row;
   }
 
@@ -617,6 +709,21 @@ export function createRenderer({
     line.className = "small-muted";
     line.textContent = `Link health: checked ${linkHealth?.lastCheckedAt || "never"} • broken ${broken} • warnings ${warn}`;
     box.appendChild(line);
+
+    const calendarLine = document.createElement("p");
+    calendarLine.className = "small-muted";
+    calendarLine.textContent = `Calendar: ${workflow.integrations?.calendarDraft?.lastSyncSummary || "No sync/export yet."}`;
+    box.appendChild(calendarLine);
+
+    const reminderLine = document.createElement("p");
+    reminderLine.className = "small-muted";
+    reminderLine.textContent = `Messaging: last dispatch ${workflow.integrations?.messaging?.lastDispatchAt || "never"} • history ${(workflow.integrations?.messaging?.dispatchHistory || []).length}`;
+    box.appendChild(reminderLine);
+
+    const splitwiseLine = document.createElement("p");
+    splitwiseLine.className = "small-muted";
+    splitwiseLine.textContent = `Splitwise planning: ${(workflow.integrations?.splitwise?.plannedExpenses || []).length} planned expense rows`;
+    box.appendChild(splitwiseLine);
 
     const sheets = document.createElement("p");
     sheets.className = "small-muted";

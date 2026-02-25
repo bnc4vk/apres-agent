@@ -134,10 +134,10 @@ async function estimateTravelCost(
   }
 
   if (weightedCount === 0) {
-    const fallback = fallbackFlightPrice("east", resort?.state ?? "Colorado");
+    const fallback = fallbackFlightPrice("central", resort?.state ?? "Colorado");
     weightedSum = fallback * groupSize;
     weightedCount = groupSize;
-    assumptions.push("Assumed East Coast origin for flights due missing departure pod details.");
+    assumptions.push("Assumed central U.S. origin for flights because departure pod details were missing.");
   }
 
   const averageFlight = weightedSum / Math.max(1, weightedCount);

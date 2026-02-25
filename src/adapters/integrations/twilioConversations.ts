@@ -12,6 +12,13 @@ export type ConversationBootstrapResult = {
   mode: "live" | "simulated";
 };
 
+export type ConversationMessageSendResult = {
+  ok: boolean;
+  mode: "live" | "simulated";
+  sentCount: number;
+  errors: string[];
+};
+
 function hasConfig(): boolean {
   return Boolean(appConfig.twilioAccountSid && appConfig.twilioAuthToken && appConfig.twilioServiceSid);
 }
@@ -69,4 +76,51 @@ export async function bootstrapConversation(
   } catch {
     return { ok: false, conversationSid: null, inviteUrl: null, mode: "live" };
   }
+}
+
+export async function sendConversationMessages(
+  conversationSid: string | null | undefined,
+  messages: Array<{ author: string; body: string }>
+): Promise<ConversationMessageSendResult> {
+  if (!conversationSid || messages.length === 0) {
+    return { ok: false, mode: "simulated", sentCount: 0, errors: ["Missing conversation SID or messages."] };
+  }
+  if (!hasConfig()) {
+    return { ok: true, mode: "simulated", sentCount: messages.length, errors: [] };
+  }
+
+  const auth = Buffer.from(`${appConfig.twilioAccountSid}:${appConfig.twilioAuthToken}`).toString("base64");
+  const base = `https://conversations.twilio.com/v1/Services/${appConfig.twilioServiceSid}/Conversations/${conversationSid}/Messages`;
+  let sentCount = 0;
+  const errors: string[] = [];
+
+  for (const message of messages.slice(0, 20)) {
+    try {
+      const response = await fetch(base, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          Author: message.author,
+          Body: message.body.slice(0, 1600)
+        }).toString()
+      });
+      if (response.ok) {
+        sentCount += 1;
+      } else {
+        errors.push(`HTTP ${response.status}`);
+      }
+    } catch (error: any) {
+      errors.push(String(error?.message ?? error));
+    }
+  }
+
+  return {
+    ok: sentCount > 0 && errors.length === 0,
+    mode: "live",
+    sentCount,
+    errors
+  };
 }

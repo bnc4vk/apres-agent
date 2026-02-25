@@ -1,6 +1,6 @@
-import { DecisionPackage } from "../../core/decision";
-import { TripSpec } from "../../core/tripSpec";
-import { ChatTurn } from "../../conversations/engine";
+import type { DecisionPackage } from "../../core/decision";
+import type { TripSpec } from "../../core/tripSpec";
+import type { ChatTurn } from "../../conversations/types";
 
 export type StoredSession = {
   id: string;

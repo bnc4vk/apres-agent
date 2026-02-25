@@ -76,11 +76,29 @@ export async function enrichDecisionPackageWithLLMReview(
       }
     };
 
-    const review = await llm.reviewItineraryCandidates(input);
+    const review = await withTimeout(
+      llm.reviewItineraryCandidates(input),
+      15000,
+      "LLM itinerary review timed out; returning deterministic candidate ranking."
+    );
     if (!review) return decisionPackage;
     return applyReview(decisionPackage, review);
   } catch {
     return decisionPackage;
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

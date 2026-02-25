@@ -1,8 +1,9 @@
 import { nanoid } from "nanoid";
 import { supabaseAdmin } from "./supabaseClient";
-import { ConversationStore, StoredConversation, StoredSession } from "./store";
-import { ChatTurn } from "../../conversations/engine";
-import { createEmptyTripSpec, normalizeTripSpec, TripSpec } from "../../core/tripSpec";
+import type { ConversationStore, StoredConversation, StoredSession } from "./store";
+import type { ChatTurn } from "../../conversations/types";
+import { createEmptyTripSpec, normalizeTripSpec } from "../../core/tripSpec";
+import type { TripSpec } from "../../core/tripSpec";
 
 type ConversationRow = {
   id: string;

@@ -15,11 +15,16 @@ export type OpsBoard = {
   chatBootstrap: {
     enabled: boolean;
     inviteUrl: string | null;
+    conversationSid?: string | null;
+    status?: "pending" | "ready" | "simulated" | "failed";
+    mode?: "live" | "simulated";
     provider: "twilio" | "none";
   };
   splitwiseBootstrap: {
     enabled: boolean;
     groupId: string | null;
+    seededExpenseCount?: number;
+    mode?: "live" | "simulated";
     status: "pending" | "ready";
   };
 };
@@ -74,11 +79,16 @@ export function buildOpsBoard(spec: TripSpec): OpsBoard {
     chatBootstrap: {
       enabled: spec.organizerOps.wantsGroupChatSetup === true,
       inviteUrl: null,
+      conversationSid: null,
+      status: spec.organizerOps.wantsGroupChatSetup ? "pending" : "ready",
+      mode: "simulated",
       provider: spec.organizerOps.wantsGroupChatSetup ? "twilio" : "none"
     },
     splitwiseBootstrap: {
       enabled: spec.organizerOps.wantsSplitwiseSetup === true,
       groupId: null,
+      seededExpenseCount: 0,
+      mode: "simulated",
       status: spec.organizerOps.wantsSplitwiseSetup ? "pending" : "ready"
     }
   };

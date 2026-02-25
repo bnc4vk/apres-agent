@@ -10,17 +10,6 @@ export async function fetchFieldLabels() {
   return data.fieldLabels ?? {};
 }
 
-export async function sendChatMessage(sessionId, message) {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, message })
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Failed to send message.");
-  return data;
-}
-
 export async function requestNewChat(sessionId) {
   const response = await fetch("/api/session/new", {
     method: "POST",
@@ -122,12 +111,28 @@ export async function refreshOperations(tripId) {
   return data;
 }
 
+export async function refreshOperationsLive(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/operations/refresh?live=1`, {
+    method: "POST"
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to refresh live operations.");
+  return data;
+}
+
 export async function bootstrapSplitwise(tripId) {
   const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/integrations/splitwise/bootstrap`, {
     method: "POST"
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Failed to bootstrap Splitwise.");
+  return data;
+}
+
+export async function fetchSplitwisePlan(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/integrations/splitwise/plan`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to prepare Splitwise plan.");
   return data;
 }
 
@@ -138,6 +143,30 @@ export async function bootstrapTripChat(tripId) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Failed to bootstrap chat.");
   return data;
+}
+
+export async function sendWorkflowNotifications(tripId, kinds = ["deadline", "vote", "link_refresh"]) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/integrations/chat/notify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kinds })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to dispatch reminders.");
+  return data;
+}
+
+export async function syncTripCalendar(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/integrations/calendar/sync`, {
+    method: "POST"
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to sync calendar.");
+  return data;
+}
+
+export function getTripCalendarIcsUrl(tripId) {
+  return `/api/trips/${encodeURIComponent(tripId)}/integrations/calendar.ics`;
 }
 
 export async function exportTripSheets(tripId) {

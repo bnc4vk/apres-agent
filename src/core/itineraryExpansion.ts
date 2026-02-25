@@ -24,7 +24,25 @@ export function expandItinerary(
     const label = start ? start.add(i, "day").format("YYYY-MM-DD") : `Day ${i + 1}`;
     const dayHeader = `Day ${i + 1} — ${label}`;
     const blocks = [];
-    if (i === 0) {
+    const isFirstDay = i === 0;
+    const isLastDay = i === tripLength - 1;
+    const isSingleDayTrip = tripLength === 1;
+
+    if (isLastDay && !isSingleDayTrip) {
+      blocks.push("Breakfast, pack up, and check out.");
+      if (spec.gear.rentalRequired) {
+        blocks.push(`Return rentals at ${gearShop} before departure.`);
+      }
+      if (spec.travel.noFlying) {
+        blocks.push("Drive home / onward to the next stop.");
+      } else {
+        blocks.push("Airport transfer, rental-car return, and departure buffer.");
+      }
+      days.push(`${dayHeader}\n- ${blocks.join("\n- ")}`);
+      continue;
+    }
+
+    if (isFirstDay) {
       blocks.push(`Arrive, check in near ${itinerary.lodgingArea}.`);
       if (spec.gear.rentalRequired) {
         blocks.push(`Pick up rentals at ${gearShop}.`);

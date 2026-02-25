@@ -158,7 +158,7 @@ function buildSnowAssessment(score: { snowOk: boolean; avgTempOk: boolean; month
 }
 
 function estimateLodgingBudgetPerPerson(spec: TripSpec): number | null {
-  if (spec.budget.perPersonMax) return Math.round(spec.budget.perPersonMax);
+  if (spec.budget.perPersonMax) return Math.max(120, Math.round(spec.budget.perPersonMax * 0.32));
   const byBand = {
     low: 300,
     mid: 650,
@@ -168,9 +168,12 @@ function estimateLodgingBudgetPerPerson(spec: TripSpec): number | null {
 }
 
 function budgetLine(spec: TripSpec): string {
-  const perPerson = estimateLodgingBudgetPerPerson(spec);
-  if (!perPerson) return "Lodging budget is still flexible.";
-  return `Target lodging budget is about $${perPerson} per person total.`;
+  if (spec.budget.perPersonMax) {
+    return `Target total trip budget is about $${Math.round(spec.budget.perPersonMax)} per person.`;
+  }
+  const lodgingPerPerson = estimateLodgingBudgetPerPerson(spec);
+  if (!lodgingPerPerson) return "Budget is still flexible.";
+  return `Estimated lodging allocation is about $${lodgingPerPerson} per person for this trip.`;
 }
 
 function formatDateRange(start?: string, end?: string): string {

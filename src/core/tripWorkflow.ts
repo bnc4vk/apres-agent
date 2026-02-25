@@ -180,10 +180,17 @@ export type WorkflowIntegrationsState = {
   calendarDraft: {
     lastGeneratedAt: string;
     events: Array<{ title: string; date: string; kind: "deadline" | "milestone" | "travel" }>;
+    lastSyncedAt?: string | null;
+    lastSyncSummary?: string | null;
+    syncProvider?: "google_calendar" | "ics_export" | "simulated" | "none";
+    syncedEventCount?: number;
+    icsUrl?: string | null;
   };
   splitwise: {
     taskLinkedExpenseDefaults: Array<{ taskId: string; category: string; defaultPayer: string }>;
     exportCategories: string[];
+    plannedExpenses?: Array<{ description: string; amountUsd: number; category: string; payerDefault: string; taskId?: string | null }>;
+    lastPlannedAt?: string | null;
   };
   sheets: {
     stableColumns: string[];
@@ -193,6 +200,15 @@ export type WorkflowIntegrationsState = {
     reminderNudges: Array<{ id: string; kind: "deadline" | "vote" | "link_refresh"; message: string; targetDate?: string | null }>;
     voteRequests: Array<{ voteType: WorkflowVoteType; title: string; open: boolean }>;
     linkRefreshNotices: Array<{ label: string; message: string }>;
+    lastDispatchAt?: string | null;
+    dispatchHistory?: Array<{
+      id: string;
+      channel: "twilio" | "simulated";
+      messageType: "deadline" | "vote" | "link_refresh";
+      status: "sent" | "simulated" | "failed";
+      summary: string;
+      sentAt: string;
+    }>;
   };
   linkHealth: {
     lastCheckedAt: string | null;
@@ -206,11 +222,15 @@ export type WorkflowOperationalCheck = {
   status: HealthStatus;
   summary: string;
   checkedAt: string;
+  source?: "heuristic" | "live";
+  detailUrl?: string | null;
 };
 
 export type WorkflowOperationalState = {
   checks: WorkflowOperationalCheck[];
   tripWeekReadinessScore: number;
+  tripWeekChecklist?: Array<{ id: string; label: string; status: "todo" | "done" | "warning"; detail?: string }>;
+  lastLiveRefreshAt?: string | null;
 };
 
 export type TripWorkflowState = {
@@ -279,7 +299,7 @@ export function attachWorkflowState(
   const assumptionsQueue = buildAssumptionQueue(spec, nextDecision, prevWorkflow, now);
   const lockedDecisions = buildLockedDecisions(spec, prevWorkflow?.lockedDecisions ?? [], now);
   const integrations = buildIntegrations(nextDecision, coordination, prevWorkflow?.integrations, now);
-  const operations = buildOperationalState(spec, nextDecision, coordination, integrations, now);
+  const operations = buildOperationalState(spec, nextDecision, coordination, integrations, now, prevWorkflow?.operations);
   const stageInputs = buildStages(spec, nextDecision, lockedDecisions, assumptionsQueue, coordination, integrations, operations);
   const bookingReadiness = buildBookingReadiness(stageInputs, coordination, integrations);
 
@@ -935,7 +955,12 @@ function buildIntegrations(
   return {
     calendarDraft: {
       lastGeneratedAt: now,
-      events: calendarEvents
+      events: calendarEvents,
+      lastSyncedAt: previous?.calendarDraft?.lastSyncedAt ?? null,
+      lastSyncSummary: previous?.calendarDraft?.lastSyncSummary ?? null,
+      syncProvider: previous?.calendarDraft?.syncProvider ?? "none",
+      syncedEventCount: previous?.calendarDraft?.syncedEventCount ?? 0,
+      icsUrl: previous?.calendarDraft?.icsUrl ?? null
     },
     splitwise: {
       taskLinkedExpenseDefaults: coordination.tasks.map((task) => ({
@@ -943,7 +968,9 @@ function buildIntegrations(
         category: taskExpenseCategory(task),
         defaultPayer: task.owner || "Organizer"
       })),
-      exportCategories: ["Lodging", "Lift", "Travel", "Food", "Gear", "Ground Transport"]
+      exportCategories: ["Lodging", "Lift", "Travel", "Food", "Gear", "Ground Transport"],
+      plannedExpenses: previous?.splitwise?.plannedExpenses ?? [],
+      lastPlannedAt: previous?.splitwise?.lastPlannedAt ?? null
     },
     sheets: {
       stableColumns: ["workflow_stage", "assignee", "confirmation_status", "source_freshness", "decision_locked", "due_date"],
@@ -952,7 +979,9 @@ function buildIntegrations(
     messaging: {
       reminderNudges,
       voteRequests: openVotes.map((vote) => ({ voteType: vote.type, title: vote.title, open: true })),
-      linkRefreshNotices
+      linkRefreshNotices,
+      lastDispatchAt: previous?.messaging?.lastDispatchAt ?? null,
+      dispatchHistory: (previous?.messaging?.dispatchHistory ?? []).slice(-20)
     },
     linkHealth: {
       lastCheckedAt: previous?.linkHealth?.lastCheckedAt ?? null,
@@ -966,7 +995,8 @@ function buildOperationalState(
   decision: DecisionPackage,
   coordination: WorkflowCoordinationState,
   integrations: WorkflowIntegrationsState,
-  now: string
+  now: string,
+  previous?: WorkflowOperationalState
 ): WorkflowOperationalState {
   const start = spec.dates.start ? dayjs(spec.dates.start) : null;
   const daysUntilStart = start ? start.startOf("day").diff(dayjs().startOf("day"), "day") : null;
@@ -975,7 +1005,7 @@ function buildOperationalState(
   const overdueTasks = coordination.tasks.filter((task) => task.dueDate && task.status !== "done" && dayjs(task.dueDate).isBefore(dayjs(), "day")).length;
   const missingAirport = !spec.travel.noFlying && !spec.travel.arrivalAirport;
 
-  const checks: WorkflowOperationalCheck[] = [
+  let checks: WorkflowOperationalCheck[] = [
     {
       key: "weather_snow",
       label: "Weather / Snow",
@@ -989,7 +1019,8 @@ function buildOperationalState(
         daysUntilStart !== null && daysUntilStart <= 7
           ? "Trip is within 7 days. Refresh forecast/snow conditions before final packing."
           : "Operational forecast refresh not yet run. Historical snow signals available in itinerary cards.",
-      checkedAt: now
+      checkedAt: now,
+      source: "heuristic"
     },
     {
       key: "lift_ops",
@@ -999,7 +1030,8 @@ function buildOperationalState(
         daysUntilStart !== null && daysUntilStart <= 3
           ? "Trip is imminent. Check resort lift/status feed for wind holds and terrain openings."
           : "Lift status feed not configured; add a manual check 24-48h before departure.",
-      checkedAt: now
+      checkedAt: now,
+      source: "heuristic"
     },
     {
       key: "roads",
@@ -1008,7 +1040,8 @@ function buildOperationalState(
       summary: spec.travel.noFlying
         ? "Driving trip. Review chain requirements and weather impacts on approach roads."
         : "Road chain checks apply to mountain transfer legs (airport/car).",
-      checkedAt: now
+      checkedAt: now,
+      source: "heuristic"
     },
     {
       key: "airport_timing",
@@ -1019,9 +1052,21 @@ function buildOperationalState(
         : !spec.travel.noFlying
           ? "Confirm arrival windows, baggage/gear timing, and rental car pickup buffer."
           : "Driving-only trip; airport timing not applicable.",
-      checkedAt: now
+      checkedAt: now,
+      source: "heuristic"
     }
   ];
+
+  if (previous?.checks?.length) {
+    const previousByKey = new Map(previous.checks.map((check) => [check.key, check]));
+    checks = checks.map((check) => {
+      const prev = previousByKey.get(check.key);
+      if (!prev || prev.source !== "live") return check;
+      const ageHours = dayjs(now).diff(dayjs(prev.checkedAt), "hour", true);
+      if (!Number.isFinite(ageHours) || ageHours > 6) return check;
+      return { ...check, status: prev.status, summary: prev.summary, checkedAt: prev.checkedAt, source: "live", detailUrl: prev.detailUrl ?? null };
+    });
+  }
 
   const readinessFactors = [
     integrations.linkHealth.records.length > 0 && linkBrokenCount === 0 ? 1 : 0.5,
@@ -1036,10 +1081,42 @@ function buildOperationalState(
     label: "Trip Week Readiness",
     status: readinessScore >= 80 ? "ok" : readinessScore >= 55 ? "watch" : "warning",
     summary: `${readinessScore}% readiness based on task completion, deadlines, link health, and operational warning count.`,
-    checkedAt: now
+    checkedAt: now,
+    source: previous?.checks?.find((c) => c.key === "trip_week_readiness")?.source === "live" ? "live" : "heuristic"
   });
+  const tripWeekChecklist: NonNullable<WorkflowOperationalState["tripWeekChecklist"]> = [
+    {
+      id: "tasks_assigned",
+      label: "Critical tasks assigned",
+      status: coordination.tasks.filter((t) => t.critical).every((t) => Boolean(t.owner)) ? "done" : "warning",
+      detail: "Assign lodging, transport, rentals, and groceries owners."
+    },
+    {
+      id: "links_checked",
+      label: "Planning links checked",
+      status: integrations.linkHealth.lastCheckedAt ? "done" : "todo",
+      detail: integrations.linkHealth.lastCheckedAt ? `Last checked ${integrations.linkHealth.lastCheckedAt}` : "Run link health validation."
+    },
+    {
+      id: "weather_refreshed",
+      label: "Weather / snow refreshed",
+      status: previous?.lastLiveRefreshAt ? "done" : "todo",
+      detail: previous?.lastLiveRefreshAt ? `Live ops refreshed ${previous.lastLiveRefreshAt}` : "Run live ops refresh."
+    },
+    {
+      id: "budget_approved",
+      label: "Budget approval closed",
+      status: coordination.votes.find((v) => v.type === "budget_approval")?.status === "approved" ? "done" : "todo",
+      detail: "Collect final budget approval before booking."
+    }
+  ];
 
-  return { checks, tripWeekReadinessScore: readinessScore };
+  return {
+    checks,
+    tripWeekReadinessScore: readinessScore,
+    tripWeekChecklist,
+    lastLiveRefreshAt: previous?.lastLiveRefreshAt ?? null
+  };
 }
 
 function buildRunMetadata(

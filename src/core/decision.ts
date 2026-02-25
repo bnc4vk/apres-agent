@@ -207,10 +207,12 @@ function deriveTravelFitScore(
     }
     return 0.6;
   }
+  const requiresAirCarPlanning = Boolean(spec.travel.arrivalAirport);
   const hasCars = (itinerary.liveOptions?.cars?.length ?? 0) > 0;
   if (!resort) return hasCars ? 0.7 : 0.45;
   const airportMatch = spec.travel.arrivalAirport ? spec.travel.arrivalAirport === resort.nearestAirport : true;
   const base = airportMatch ? 0.88 : 0.62;
+  if (!requiresAirCarPlanning) return clampScore(base);
   return clampScore(base - (hasCars ? 0 : 0.18));
 }
 
@@ -263,7 +265,7 @@ function clampScore(value: number): number {
 }
 
 function shouldIncludeCars(spec: TripSpec): boolean {
-  return spec.travel.noFlying === false || Boolean(spec.travel.arrivalAirport);
+  return spec.travel.noFlying !== true && Boolean(spec.travel.arrivalAirport);
 }
 
 function buildBudgetDetail(itinerary: ItineraryPlan["itineraries"][number]): string {

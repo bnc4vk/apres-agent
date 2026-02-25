@@ -1,7 +1,8 @@
 import { nanoid } from "nanoid";
-import { createEmptyTripSpec, TripSpec } from "../../core/tripSpec";
-import { ConversationStore, StoredConversation, StoredSession } from "./store";
-import { ChatTurn } from "../../conversations/engine";
+import { createEmptyTripSpec } from "../../core/tripSpec";
+import type { TripSpec } from "../../core/tripSpec";
+import type { ConversationStore, StoredConversation, StoredSession } from "./store";
+import type { ChatTurn } from "../../conversations/types";
 
 type MemorySession = StoredSession & { sessionId: string };
 type MemoryConversation = StoredConversation;

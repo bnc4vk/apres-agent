@@ -18,7 +18,6 @@ async function run() {
   const { runBudgetGraph } = await import("../src/core/budgetGraph");
   const { buildDecisionPackage } = await import("../src/core/decision");
   const { createEmptyTripSpec, determineMissingFields, mergeTripSpec } = await import("../src/core/tripSpec");
-  const { createSession, handleUserMessage } = await import("../src/conversations/engine");
   const { loadConversationByTripId } = await import("../src/conversations/sessionService");
   const { app } = await import("../src/app");
 
@@ -31,10 +30,8 @@ async function run() {
   await testBudgetGraph({ createEmptyTripSpec, mergeTripSpec, buildItineraries, runBudgetGraph });
   testItineraryBuilder({ createEmptyTripSpec, mergeTripSpec, buildItineraries });
   await testHardConstraintLodging({ createEmptyTripSpec, mergeTripSpec, buildDecisionPackage });
-  await testConversationFlow({ createSession, handleUserMessage });
-  await testGeneralizedRelativeDateExtraction({ createSession, handleUserMessage });
-  await testAssumptionFlow({ createSession, handleUserMessage });
-  await testAssumptionAcceptanceResolution({ createSession, handleUserMessage });
+  testRelaxedLocationMatching({ createEmptyTripSpec, mergeTripSpec, shortlistResorts });
+  testMixedPassNotesInference({ createEmptyTripSpec, mergeTripSpec });
   await testApi({ app });
   await testTripApis({ app, loadConversationByTripId });
   console.log("All tests passed.");
@@ -211,73 +208,32 @@ async function testHardConstraintLodging(deps: any) {
   );
 }
 
-async function testConversationFlow(deps: any) {
-  const { createSession, handleUserMessage } = deps;
-  let session = createSession();
-  session = await handleUserMessage(
-    session,
-    "We are 6 people, mixed beginner/intermediate. Feb 20-23, need rentals, mid budget, no flying, max 4 hours driving. Open to suggestions. Nobody has a pass."
-  );
-  let last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.length > 0);
-  assert.ok(session.tripSpec.status.missingFields.includes("traveler_pods"));
-  session = await handleUserMessage(session, "3 from SF, 3 from Sacramento");
-  last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("here are 2–3 options"));
-  assert.ok(!last.includes("http://"));
-  assert.ok(!last.includes("https://"));
+function testRelaxedLocationMatching(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec, shortlistResorts } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    location: { region: "Park City / Cottonwoods", openToSuggestions: false, confirmed: true },
+    dates: { start: "2026-03-20", end: "2026-03-23", yearConfirmed: true },
+    group: { size: 8, skillLevels: ["beginner", "intermediate", "advanced"] },
+    gear: { rentalRequired: true, confirmed: true },
+    budget: { perPersonMax: 2200, confirmed: true },
+    notes: { passes: { noPassCount: 8, confirmed: true } },
+    travel: { noFlying: true, maxDriveHours: 6, confirmed: true },
+    travelers: { pods: [{ origin: "SLC", count: 8 }] }
+  });
+  const resorts = shortlistResorts(spec, 3);
+  assert.ok(resorts.length > 0);
+  assert.ok(resorts.every((resort) => resort.state === "Utah"));
 }
 
-async function testGeneralizedRelativeDateExtraction(deps: any) {
-  const { createSession, handleUserMessage } = deps;
-  let session = createSession();
-  session = await handleUserMessage(session, "i'm planning a trip for a group size of 8, with half of the group owning ikon");
-  const firstAsk = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(firstAsk.toLowerCase().includes("date"));
-
-  session = await handleUserMessage(session, "any weekend in the next two months");
-  const secondAsk = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(
-    !secondAsk.toLowerCase().includes("what dates are you aiming for"),
-    "Should avoid repeating the exact same date follow-up"
-  );
-  assert.equal(session.tripSpec.dates.weekendsPreferred, true);
-  assert.ok(Boolean(session.tripSpec.dates.start));
-  assert.ok(Boolean(session.tripSpec.dates.end));
-  assert.ok(session.tripSpec.extraction.assumptions.length > 0);
-}
-
-async function testAssumptionFlow(deps: any) {
-  const { createSession, handleUserMessage } = deps;
-  let session = createSession();
-  session = await handleUserMessage(session, "Planning a ski trip.");
-  session = await handleUserMessage(session, "Sometime in March.");
-  session = await handleUserMessage(session, "Still gathering details.");
-  let last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("generate itineraries now with assumptions"));
-
-  session = await handleUserMessage(session, "Proceed with assumptions.");
-  last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("here are 2–3 options"));
-  assert.ok(last.toLowerCase().includes("budget check"));
-}
-
-async function testAssumptionAcceptanceResolution(deps: any) {
-  const { createSession, handleUserMessage } = deps;
-  let session = createSession();
-  session = await handleUserMessage(session, "Planning a ski trip.");
-  session = await handleUserMessage(session, "Sometime in March.");
-  session = await handleUserMessage(session, "Still gathering details.");
-
-  session = await handleUserMessage(
-    session,
-    "The intermediate skiers in the group hold epic passes. The rest of your assumptions are fine."
-  );
-
-  const last = session.history[session.history.length - 1]?.content ?? "";
-  assert.ok(last.toLowerCase().includes("here are 2–3 options"));
-  assert.ok(!session.tripSpec.status.missingFields.includes("travel_restrictions"));
-  assert.ok(!session.tripSpec.status.missingFields.includes("location_input"));
+function testMixedPassNotesInference(deps: any) {
+  const { createEmptyTripSpec, mergeTripSpec } = deps;
+  const spec = mergeTripSpec(createEmptyTripSpec(), {
+    group: { size: 8 },
+    notes: { passes: { notes: "2 Ikon, 1 Epic, 5 no pass" } }
+  });
+  assert.equal(spec.notes.passes?.ikonCount, 2);
+  assert.equal(spec.notes.passes?.epicCount, 1);
+  assert.equal(spec.notes.passes?.noPassCount, 5);
 }
 
 async function testApi(deps: any) {
@@ -288,35 +244,12 @@ async function testApi(deps: any) {
   assert.ok(sessionId);
   assert.ok(Array.isArray(sessionRes.body.messages));
 
-  const chatRes = await request(app)
-    .post("/api/chat")
-    .send({
-      sessionId,
-      message: "We are 4 people, beginners. Feb 20-23, need rentals, mid budget, no flying, max 4 hours driving. Open to suggestions. No passes."
-    });
-  assert.equal(chatRes.status, 200);
-  assert.ok(typeof chatRes.body.reply === "string" && chatRes.body.reply.length > 0);
-  assert.equal(chatRes.body.replyKind, "followup");
-
-  const finalRes = await request(app)
-    .post("/api/chat")
-    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
-    .send({ sessionId, message: "3 from SF, 1 from Sacramento" });
-  assert.equal(finalRes.status, 200);
-  assert.equal(finalRes.body.replyKind, "final");
-  assert.ok(finalRes.body.decisionPackage?.workflow, "Expected workflow metadata on final decision package");
-
-  const refineRes = await request(app)
-    .post("/api/chat")
-    .set("Cookie", finalRes.headers["set-cookie"] ?? [])
-    .send({ sessionId, message: "Can you make this cheaper?" });
-  assert.equal(refineRes.status, 200);
-  assert.ok(Array.isArray(refineRes.body.messages));
-  assert.ok(refineRes.body.messages.length > finalRes.body.messages.length);
+  const removedChatRes = await request(app).post("/api/chat").send({ sessionId, message: "hello" });
+  assert.equal(removedChatRes.status, 404);
 
   const newChatRes = await request(app)
     .post("/api/session/new")
-    .set("Cookie", refineRes.headers["set-cookie"] ?? [])
+    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
     .send({ sessionId });
   assert.equal(newChatRes.status, 200);
   assert.ok(Array.isArray(newChatRes.body.messages));
@@ -338,19 +271,9 @@ async function testTripApis(deps: any) {
   const sessionId = sessionRes.body.sessionId as string;
   assert.ok(sessionId);
 
-  const chatRes = await request(app)
-    .post("/api/chat")
-    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
-    .send({
-      sessionId,
-      message:
-        "8 people, Feb 20-23 2026, mixed beginner/intermediate, budget 1500, 2 Ikon 6 no pass, flying into DEN, Colorado options, need rentals for 4."
-    });
-  assert.equal(chatRes.status, 200);
-
   const tripCreate = await request(app)
     .post("/api/trips")
-    .set("Cookie", chatRes.headers["set-cookie"] ?? [])
+    .set("Cookie", sessionRes.headers["set-cookie"] ?? [])
     .send({ sessionId });
   assert.equal(tripCreate.status, 200);
   const tripId = tripCreate.body.tripId as string;
@@ -364,6 +287,14 @@ async function testTripApis(deps: any) {
   const patchRes = await request(app)
     .patch(`/api/trips/${tripId}/spec`)
     .send({
+      group: { size: 8, skillLevels: ["beginner", "intermediate"] },
+      gear: { rentalRequired: true, rentalCount: 4, confirmed: true },
+      budget: { perPersonMax: 1800, currency: "USD", band: "mid", confirmed: true },
+      travel: { noFlying: false, arrivalAirport: "DEN", confirmed: true },
+      dates: { start: "2026-02-20", end: "2026-02-23", kind: "exact", tripLengthDays: 4, yearConfirmed: true },
+      location: { state: "Colorado", openToSuggestions: false, confirmed: true },
+      travelers: { pods: [{ origin: "NYC", count: 8 }] },
+      notes: { passes: { ikonCount: 2, noPassCount: 6, confirmed: true } },
       lodgingConstraints: {
         maxWalkMinutesToLift: 12,
         hotTubRequired: true,
@@ -382,6 +313,7 @@ async function testTripApis(deps: any) {
       }
     });
   assert.equal(patchRes.status, 200);
+  assert.equal(patchRes.body.tripSpec?.status?.readyToGenerate, true);
 
   const refreshRes = await request(app).post(`/api/trips/${tripId}/options/refresh`);
   assert.equal(refreshRes.status, 200);
@@ -447,10 +379,33 @@ async function testTripApis(deps: any) {
   const splitwiseRes = await request(app).post(`/api/trips/${tripId}/integrations/splitwise/bootstrap`);
   assert.equal(splitwiseRes.status, 200);
   assert.ok(splitwiseRes.body.decisionPackage?.opsBoard?.splitwiseBootstrap?.groupId);
+  assert.ok(typeof splitwiseRes.body.decisionPackage?.opsBoard?.splitwiseBootstrap?.seededExpenseCount === "number");
+
+  const splitwisePlanRes = await request(app).get(`/api/trips/${tripId}/integrations/splitwise/plan`);
+  assert.equal(splitwisePlanRes.status, 200);
+  assert.ok(Array.isArray(splitwisePlanRes.body.plannedExpenses));
 
   const chatBootstrapRes = await request(app).post(`/api/trips/${tripId}/integrations/chat/bootstrap`);
   assert.equal(chatBootstrapRes.status, 200);
   assert.ok(chatBootstrapRes.body.decisionPackage?.opsBoard?.chatBootstrap?.inviteUrl);
+  assert.ok(chatBootstrapRes.body.decisionPackage?.opsBoard?.chatBootstrap?.conversationSid);
+
+  const notifyRes = await request(app).post(`/api/trips/${tripId}/integrations/chat/notify`).send({
+    kinds: ["deadline", "vote"]
+  });
+  assert.equal(notifyRes.status, 200);
+  assert.ok(typeof notifyRes.body.sentCount === "number");
+  assert.ok(["live", "simulated"].includes(notifyRes.body.mode));
+
+  const calIcsRes = await request(app).get(`/api/trips/${tripId}/integrations/calendar.ics`);
+  assert.equal(calIcsRes.status, 200);
+  assert.ok(String(calIcsRes.headers["content-type"]).includes("text/calendar"));
+  assert.ok(String(calIcsRes.text).includes("BEGIN:VCALENDAR"));
+
+  const calSyncRes = await request(app).post(`/api/trips/${tripId}/integrations/calendar/sync`);
+  assert.equal(calSyncRes.status, 200);
+  assert.ok(typeof calSyncRes.body.insertedCount === "number");
+  assert.ok(calSyncRes.body.decisionPackage?.workflow?.integrations?.calendarDraft?.lastSyncSummary);
 
   const optionsRes = await request(app).get(`/api/trips/${tripId}/options`);
   assert.equal(optionsRes.status, 200);

@@ -8,7 +8,6 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "tsx test/run.ts",
-    "eval:trip": "tsx test/evalTripPlanning.ts",
     "check:unused": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
   },
   "dependencies": {

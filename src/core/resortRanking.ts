@@ -19,6 +19,9 @@ export function shortlistResorts(spec: TripSpec, limit = 3): Resort[] {
   if (spec.location.region) {
     const regionLower = spec.location.region.toLowerCase();
     candidates = candidates.filter((resort) => resort.region.toLowerCase().includes(regionLower));
+    if (candidates.length === 0) {
+      candidates = filterByRelaxedLocation(regionLower, RESORTS);
+    }
   }
 
   if (spec.location.state) {
@@ -43,6 +46,40 @@ export function shortlistResorts(spec: TripSpec, limit = 3): Resort[] {
     .sort((a, b) => b.score.score - a.score.score)
     .slice(0, limit)
     .map((entry) => entry.resort);
+}
+
+function filterByRelaxedLocation(input: string, resorts: Resort[]): Resort[] {
+  const aliases = new Map<string, string>([
+    ["cottonwoods", "wasatch"],
+    ["cottonwood", "wasatch"],
+    ["park city", "wasatch"],
+    ["salt lake", "utah"],
+    ["slc", "utah"],
+    ["summit county", "summit county"],
+    ["tahoe", "tahoe"]
+  ]);
+
+  const rawTokens = input
+    .split(/[\/,|]/g)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+  const expandedTokens = new Set<string>();
+  for (const token of rawTokens) {
+    expandedTokens.add(token);
+    for (const [alias, mapped] of aliases.entries()) {
+      if (token.includes(alias) || alias.includes(token)) {
+        expandedTokens.add(mapped);
+      }
+    }
+  }
+
+  const tokens = [...expandedTokens].filter((token) => token.length >= 3);
+  if (tokens.length === 0) return [];
+
+  return resorts.filter((resort) => {
+    const haystack = `${resort.name} ${resort.region} ${resort.state}`.toLowerCase();
+    return tokens.some((token) => haystack.includes(token));
+  });
 }
 
 function scoreResortCandidate(spec: TripSpec, resort: Resort) {

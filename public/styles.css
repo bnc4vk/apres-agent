@@ -1,3 +1,353 @@
 @import url("/css/base.css");
 @import url("/css/layout.css");
 @import url("/css/components.css");
+
+.app > main.experience-root {
+  display: block;
+  flex: 1;
+  min-height: 0;
+}
+
+.screen {
+  min-height: 58vh;
+  animation: rise 220ms ease;
+}
+
+.screen[hidden] {
+  display: none !important;
+}
+
+.screen-shell {
+  border: 1px solid var(--stroke);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.screen-header h2,
+.refinement-panel-header h2,
+.loading-shell h2 {
+  margin: 0;
+  font-family: "Sora", "IBM Plex Sans", sans-serif;
+  letter-spacing: -0.02em;
+  color: #193d59;
+}
+
+.screen-header p,
+.refinement-panel-header p,
+.loading-shell p {
+  margin: 6px 0 0;
+  color: var(--text-700);
+  line-height: 1.45;
+}
+
+.intake-shell {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.trip-intake-form {
+  display: grid;
+  gap: 14px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field-card {
+  border-radius: 16px;
+  border: 1px solid rgba(90, 132, 165, 0.18);
+  background: rgba(250, 253, 255, 0.92);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.field-card h3 {
+  margin: 0;
+  font-family: "Sora", "IBM Plex Sans", sans-serif;
+  font-size: 0.95rem;
+  color: #234763;
+}
+
+.field-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: #31536d;
+}
+
+.field-card fieldset {
+  margin: 0;
+  border: 1px solid rgba(90, 132, 165, 0.16);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.field-card legend {
+  padding: 0 6px;
+  font-size: 0.78rem;
+  color: #4d6d85;
+}
+
+.trip-intake-form input,
+.trip-intake-form select,
+.trip-intake-form textarea {
+  width: 100%;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  color: var(--text-900);
+  background: rgba(255, 255, 255, 0.96);
+  outline: none;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
+.trip-intake-form textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+
+.trip-intake-form input:focus,
+.trip-intake-form select:focus,
+.trip-intake-form textarea:focus {
+  border-color: rgba(53, 135, 186, 0.65);
+  box-shadow: 0 0 0 3px rgba(111, 183, 231, 0.16);
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.check-grid label,
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: #34546d;
+}
+
+.check-grid input[type="checkbox"],
+.checkbox-line input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.intake-footer {
+  display: grid;
+  gap: 8px;
+}
+
+.intake-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.intake-error {
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(194, 106, 106, 0.24);
+  background: rgba(255, 241, 241, 0.88);
+  color: #8a3030;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+}
+
+.loading-screen {
+  display: grid;
+  place-items: center;
+}
+
+.loading-shell {
+  width: min(720px, 100%);
+  min-height: 320px;
+  padding: 22px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.loader-orb {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, rgba(148, 223, 255, 0.9), rgba(72, 166, 226, 0.22));
+  box-shadow: inset 0 0 0 1px rgba(93, 147, 185, 0.25), 0 18px 40px rgba(43, 95, 130, 0.16);
+  position: relative;
+}
+
+.loader-orb span {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  border: 2px solid rgba(62, 142, 196, 0.22);
+  animation: orbPulse 1.8s ease-out infinite;
+}
+
+.loader-orb span:nth-child(2) {
+  animation-delay: 0.35s;
+}
+
+.loader-orb span:nth-child(3) {
+  animation-delay: 0.7s;
+}
+
+.loading-shell p {
+  max-width: 52ch;
+}
+
+.results-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.results-layout .actions {
+  min-height: 58vh;
+}
+
+.refinement-panel {
+  border: 1px solid var(--stroke);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-self: start;
+  position: sticky;
+  top: 12px;
+}
+
+.refinement-panel-header h2 {
+  font-size: 1rem;
+}
+
+.refinement-panel-header p {
+  font-size: 0.9rem;
+}
+
+.refinement-form {
+  opacity: 0.95;
+}
+
+.refinement-form.is-disabled {
+  position: relative;
+}
+
+.refinement-form.is-disabled::before {
+  content: "Coming soon";
+  position: absolute;
+  right: 8px;
+  top: -18px;
+  font-size: 0.72rem;
+  color: #55758e;
+  background: rgba(233, 245, 255, 0.95);
+  border: 1px solid rgba(109, 155, 188, 0.24);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.refinement-form input:disabled,
+.refinement-form button:disabled {
+  opacity: 0.75;
+}
+
+.advanced-disclosure {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: rgba(248, 252, 255, 0.9);
+  padding: 8px 10px;
+}
+
+.advanced-disclosure > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #224760;
+  list-style: none;
+}
+
+.advanced-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-disclosure > summary::after {
+  content: "Show";
+  float: right;
+  font-weight: 500;
+  color: #58788f;
+}
+
+.advanced-disclosure[open] > summary::after {
+  content: "Hide";
+}
+
+.advanced-disclosure-body {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.itinerary-empty-state {
+  border-style: dashed;
+  background: rgba(252, 253, 255, 0.95);
+}
+
+.itinerary-empty-state h3 {
+  margin-bottom: 8px;
+}
+
+.chat.chat-log-hidden {
+  display: none;
+}
+
+@keyframes orbPulse {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1.24);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .refinement-panel {
+    position: static;
+    top: auto;
+  }
+
+  .intake-actions {
+    justify-content: stretch;
+  }
+
+  .intake-actions .primary-btn {
+    width: 100%;
+  }
+}

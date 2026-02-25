@@ -20,6 +20,13 @@ import {
   recomputeTripDecisionPackage,
   validateTripWorkflowLinks
 } from "../../services/tripWorkflowService";
+import {
+  dispatchTripMessagingNudges,
+  exportTripCalendarIcs,
+  prepareSplitwiseExpensePlan,
+  syncTripCalendarToGoogle
+} from "../../services/integrationExecutionService";
+import { refreshTripOperationalLive } from "../../services/operationalIntelligenceService";
 
 export const tripsRouter = Router();
 
@@ -159,7 +166,10 @@ tripsRouter.post("/:tripId/integrations/link-health/check", async (req, res) => 
 
 tripsRouter.post("/:tripId/operations/refresh", async (req, res) => {
   try {
-    const trip = await refreshTripOperationalWorkflow(req.params.tripId);
+    const trip =
+      req.query?.live === "1"
+        ? await refreshTripOperationalLive(req.params.tripId)
+        : await refreshTripOperationalWorkflow(req.params.tripId);
     if (!trip) {
       res.status(404).json({ error: "Trip not found or no itinerary available." });
       return;
@@ -237,6 +247,24 @@ tripsRouter.post("/:tripId/integrations/splitwise/bootstrap", async (req, res) =
   );
 });
 
+tripsRouter.get("/:tripId/integrations/splitwise/plan", async (req, res) => {
+  try {
+    const payload = await prepareSplitwiseExpensePlan(req.params.tripId);
+    if (!payload) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json({
+      tripId: req.params.tripId,
+      plannedExpenses: payload.plannedExpenses,
+      decisionPackage: payload.decisionPackage
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to prepare Splitwise plan." });
+  }
+});
+
 tripsRouter.post("/:tripId/integrations/chat/bootstrap", async (req, res) => {
   await respondWithTripAction(
     res,
@@ -245,6 +273,68 @@ tripsRouter.post("/:tripId/integrations/chat/bootstrap", async (req, res) => {
     "Trip not found.",
     "Failed to bootstrap chat."
   );
+});
+
+tripsRouter.post("/:tripId/integrations/chat/notify", async (req, res) => {
+  try {
+    const rawKinds = Array.isArray(req.body?.kinds) ? req.body.kinds : ["deadline", "vote", "link_refresh"];
+    const kinds = rawKinds.filter((kind: unknown) => ["deadline", "vote", "link_refresh"].includes(String(kind))) as Array<
+      "deadline" | "vote" | "link_refresh"
+    >;
+    const payload = await dispatchTripMessagingNudges(req.params.tripId, kinds.length ? kinds : ["deadline", "vote", "link_refresh"]);
+    if (!payload) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json({
+      tripId: req.params.tripId,
+      sentCount: payload.sentCount,
+      mode: payload.mode,
+      errors: payload.errors,
+      messages: payload.messages,
+      decisionPackage: payload.decisionPackage
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to dispatch workflow reminders." });
+  }
+});
+
+tripsRouter.get("/:tripId/integrations/calendar.ics", async (req, res) => {
+  try {
+    const payload = await exportTripCalendarIcs(req.params.tripId);
+    if (!payload) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${payload.filename}\"`);
+    res.send(payload.ics);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to export calendar ICS." });
+  }
+});
+
+tripsRouter.post("/:tripId/integrations/calendar/sync", async (req, res) => {
+  try {
+    const payload = await syncTripCalendarToGoogle(req.params.tripId);
+    if (!payload) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json({
+      tripId: req.params.tripId,
+      ok: payload.ok,
+      mode: payload.mode,
+      insertedCount: payload.insertedCount,
+      summary: payload.summary,
+      decisionPackage: payload.decisionPackage
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to sync trip calendar." });
+  }
 });
 
 tripsRouter.post("/:tripId/export/sheets", async (req, res) => {

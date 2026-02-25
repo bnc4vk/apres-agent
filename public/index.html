@@ -16,23 +16,209 @@
         <p id="page-subhead">Share what you know. I can make assumptions when details are sparse.</p>
       </header>
 
-      <main>
-        <section id="chat" class="chat" aria-label="Conversation"></section>
-        <section id="actions" class="actions" aria-label="Itinerary actions"></section>
-      </main>
+      <main id="experience-root" class="experience-root" aria-live="polite">
+        <section id="intake-screen" class="screen intake-screen" aria-label="Trip setup">
+          <div class="screen-shell intake-shell">
+            <div class="screen-header">
+              <h2>Trip setup</h2>
+              <p>
+                Enter the trip details directly, then generate itinerary options. We will focus the AI on planning
+                quality first and enable refinement chat after results.
+              </p>
+            </div>
 
-      <footer>
-        <form id="chat-form" class="chat-form">
-          <input
-            id="chat-input"
-            type="text"
-            placeholder="Share trip details..."
-            autocomplete="off"
-            aria-label="Trip planning message"
-          />
-          <button type="submit">Send</button>
-        </form>
-      </footer>
+            <form id="trip-intake-form" class="trip-intake-form">
+              <div class="field-grid">
+                <section class="field-card">
+                  <h3>Dates</h3>
+                  <label>
+                    Start date
+                    <input id="trip-start-date" name="start_date" type="date" required />
+                  </label>
+                  <label>
+                    End date
+                    <input id="trip-end-date" name="end_date" type="date" required />
+                  </label>
+                </section>
+
+                <section class="field-card">
+                  <h3>Group</h3>
+                  <label>
+                    Group size
+                    <input name="group_size" type="number" min="1" max="40" step="1" required placeholder="8" />
+                  </label>
+                  <label>
+                    Rooming style
+                    <select name="rooming_style">
+                      <option value="">Not specified</option>
+                      <option value="couples">Mostly couples</option>
+                      <option value="singles">Mostly singles</option>
+                      <option value="hybrid">Hybrid</option>
+                    </select>
+                  </label>
+                  <fieldset>
+                    <legend>Skill levels (select all that apply)</legend>
+                    <div class="check-grid">
+                      <label><input type="checkbox" name="skill_levels" value="beginner" /> Beginner</label>
+                      <label><input type="checkbox" name="skill_levels" value="intermediate" checked /> Intermediate</label>
+                      <label><input type="checkbox" name="skill_levels" value="advanced" checked /> Advanced</label>
+                      <label><input type="checkbox" name="skill_levels" value="expert" /> Expert</label>
+                    </div>
+                  </fieldset>
+                </section>
+
+                <section class="field-card">
+                  <h3>Budget</h3>
+                  <label>
+                    Per-person max (USD)
+                    <input name="budget_per_person" type="number" min="100" step="50" required placeholder="1800" />
+                  </label>
+                  <label>
+                    Budget band
+                    <select name="budget_band">
+                      <option value="mid" selected>Mid</option>
+                      <option value="low">Low</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  <label>
+                    Pass ownership
+                    <select name="pass_preset">
+                      <option value="none" selected>No passes</option>
+                      <option value="ikon">Mostly Ikon</option>
+                      <option value="epic">Mostly Epic</option>
+                      <option value="mixed">Mixed / custom</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </label>
+                  <label>
+                    Pass notes (optional)
+                    <input name="pass_notes" type="text" placeholder="2 Ikon, rest no pass" />
+                  </label>
+                </section>
+
+                <section class="field-card">
+                  <h3>Travel</h3>
+                  <label>
+                    Travel mode
+                    <select name="travel_mode">
+                      <option value="flexible" selected>Can fly or drive</option>
+                      <option value="drive_only">Drive only</option>
+                    </select>
+                  </label>
+                  <label>
+                    Max drive hours (optional)
+                    <input name="max_drive_hours" type="number" min="1" max="24" step="1" placeholder="6" />
+                  </label>
+                  <label>
+                    Preferred airport (optional)
+                    <input name="arrival_airport" type="text" placeholder="DEN" />
+                  </label>
+                  <label class="checkbox-line">
+                    <input name="open_to_suggestions" type="checkbox" checked />
+                    Open to destination suggestions
+                  </label>
+                  <label>
+                    Destination / region preference (optional)
+                    <input name="destination_preference" type="text" placeholder="Utah, Tahoe, Aspen..." />
+                  </label>
+                </section>
+
+                <section class="field-card">
+                  <h3>Lodging</h3>
+                  <label>
+                    Constraint strictness
+                    <select name="lodging_constraint_mode">
+                      <option value="soft" selected>Soft preferences</option>
+                      <option value="hard">Hard requirements</option>
+                      <option value="none">No special constraints</option>
+                    </select>
+                  </label>
+                  <label>
+                    Minimum bedrooms (optional)
+                    <input name="min_bedrooms" type="number" min="1" step="1" placeholder="3" />
+                  </label>
+                  <label>
+                    Max walk minutes to lift (optional)
+                    <input name="max_walk_minutes" type="number" min="1" step="1" placeholder="10" />
+                  </label>
+                  <div class="check-grid">
+                    <label><input name="hot_tub_required" type="checkbox" /> Hot tub</label>
+                    <label><input name="kitchen_required" type="checkbox" checked /> Kitchen</label>
+                    <label><input name="laundry_required" type="checkbox" /> Laundry</label>
+                  </div>
+                </section>
+
+                <section class="field-card">
+                  <h3>Rentals & notes</h3>
+                  <label>
+                    Rental gear needed?
+                    <select name="rental_required">
+                      <option value="unknown">Not sure</option>
+                      <option value="yes">Yes</option>
+                      <option value="no" selected>No</option>
+                    </select>
+                  </label>
+                  <label>
+                    Rental count (optional)
+                    <input name="rental_count" type="number" min="1" step="1" placeholder="2" />
+                  </label>
+                  <label>
+                    Planning notes (optional)
+                    <textarea name="planner_notes" rows="4" placeholder="Preference for ski-in/ski-out, nightlife, beginner terrain, etc."></textarea>
+                  </label>
+                </section>
+              </div>
+
+              <div class="intake-footer">
+                <p id="intake-error" class="intake-error" role="alert" hidden></p>
+                <div class="intake-actions">
+                  <button id="generate-itineraries-btn" type="submit" class="primary-btn">Generate itineraries</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="loading-screen" class="screen loading-screen" aria-label="Generating itineraries" hidden>
+          <div class="screen-shell loading-shell">
+            <div class="loader-orb" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <h2>Generating itinerary options</h2>
+            <p id="loading-status-text">Reviewing trip constraints and building ranked itinerary candidates.</p>
+          </div>
+        </section>
+
+        <section id="results-screen" class="screen results-screen" aria-label="Generated itineraries" hidden>
+          <div class="results-layout">
+            <section id="actions" class="actions" aria-label="Itinerary actions"></section>
+
+            <aside class="refinement-panel" aria-label="Refinements">
+              <div class="refinement-panel-header">
+                <h2>Refine with chat</h2>
+                <p>Natural-language refinements are temporarily disabled while we improve itinerary generation quality.</p>
+              </div>
+
+              <section id="chat" class="chat chat-log-hidden" aria-label="Conversation log" hidden></section>
+
+              <form id="chat-form" class="chat-form refinement-form" aria-disabled="true">
+                <input
+                  id="chat-input"
+                  type="text"
+                  placeholder="Refinements coming soon (e.g., 'make option 2 cheaper and more beginner-friendly')"
+                  autocomplete="off"
+                  aria-label="Itinerary refinement message"
+                  disabled
+                />
+                <button type="submit" disabled>Refine (Soon)</button>
+              </form>
+            </aside>
+          </div>
+        </section>
+      </main>
     </div>
     <script type="module" src="/app.js"></script>
   </body>

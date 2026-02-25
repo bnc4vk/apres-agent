@@ -121,6 +121,8 @@ export async function bootstrapTripSplitwise(tripId: string): Promise<TripRecord
   decisionPackage.opsBoard.splitwiseBootstrap = {
     enabled: true,
     groupId: result.groupId,
+    seededExpenseCount: result.seededExpenseCount,
+    mode: result.mode,
     status: result.ok ? "ready" : "pending"
   };
   const workflowDecision = finalizeDecisionPackageForTripSpec(loaded.conversation.tripSpec, decisionPackage, {
@@ -159,7 +161,10 @@ export async function bootstrapTripChat(tripId: string): Promise<TripRecord | nu
   decisionPackage.opsBoard.chatBootstrap = {
     enabled: true,
     provider: "twilio",
-    inviteUrl: result.inviteUrl
+    inviteUrl: result.inviteUrl,
+    conversationSid: result.conversationSid,
+    status: result.ok ? (result.mode === "simulated" ? "simulated" : "ready") : "failed",
+    mode: result.mode
   };
   const workflowDecision = finalizeDecisionPackageForTripSpec(loaded.conversation.tripSpec, decisionPackage, {
     previousDecisionPackage: loaded.conversation.decisionPackage ?? decisionPackageBase,

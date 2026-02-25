@@ -20,6 +20,8 @@ type SearchInput = {
   longitude: number;
 };
 
+const GOOGLE_PLACES_TIMEOUT_MS = 7000;
+
 export async function searchPlacesText(input: SearchInput): Promise<PlacesResult[] | null> {
   if (!appConfig.googlePlacesApiKey) return null;
 
@@ -45,6 +47,7 @@ export async function searchPlacesText(input: SearchInput): Promise<PlacesResult
         "X-Goog-Api-Key": appConfig.googlePlacesApiKey,
         "X-Goog-FieldMask": fieldMask
       },
+      signal: timeoutSignal(GOOGLE_PLACES_TIMEOUT_MS),
       body: JSON.stringify({
         textQuery: input.query,
         locationBias: {
@@ -77,6 +80,12 @@ export async function searchPlacesText(input: SearchInput): Promise<PlacesResult
   } catch {
     return null;
   }
+}
+
+function timeoutSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
 }
 
 function toOpeningHours(input: unknown): string | null {
