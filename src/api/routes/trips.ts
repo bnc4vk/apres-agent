@@ -13,6 +13,13 @@ import { loadConversationByTripId } from "../../conversations/sessionService";
 import { exportSheetsForLoadedConversation, HttpRouteError } from "../../services/sheetsExportService";
 import { expandItinerary } from "../../core/itineraryExpansion";
 import { getConversationStore } from "../../adapters/persistence";
+import {
+  applyTripWorkflowActions,
+  exportTripWorkflowSnapshot,
+  refreshTripOperationalWorkflow,
+  recomputeTripDecisionPackage,
+  validateTripWorkflowLinks
+} from "../../services/tripWorkflowService";
 
 export const tripsRouter = Router();
 
@@ -80,6 +87,87 @@ tripsRouter.post("/:tripId/options/refresh", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to refresh trip options." });
+  }
+});
+
+tripsRouter.post("/:tripId/options/recompute", async (req, res) => {
+  try {
+    const mode = req.body?.mode === "same_snapshot" ? "same_snapshot" : "refresh_live";
+    const trip = await recomputeTripDecisionPackage(req.params.tripId, mode);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to recompute trip options." });
+  }
+});
+
+tripsRouter.post("/:tripId/workflow/actions", async (req, res) => {
+  try {
+    const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
+    if (actions.length === 0) {
+      res.status(400).json({ error: "At least one workflow action is required." });
+      return;
+    }
+    const trip = await applyTripWorkflowActions(req.params.tripId, actions as any);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to update workflow." });
+  }
+});
+
+tripsRouter.get("/:tripId/workflow/snapshot", async (req, res) => {
+  try {
+    const payload = await exportTripWorkflowSnapshot(req.params.tripId);
+    if (!payload) {
+      res.status(404).json({ error: "Trip not found." });
+      return;
+    }
+    const format = (req.query?.format ?? "json").toString();
+    if (format === "markdown" || format === "md") {
+      res.type("text/markdown").send(payload.report.markdown);
+      return;
+    }
+    res.json({ ...payload.trip, snapshotReport: payload.report.json, snapshotMarkdown: payload.report.markdown });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to export workflow snapshot." });
+  }
+});
+
+tripsRouter.post("/:tripId/integrations/link-health/check", async (req, res) => {
+  try {
+    const trip = await validateTripWorkflowLinks(req.params.tripId);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found or no itinerary available." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to validate planning links." });
+  }
+});
+
+tripsRouter.post("/:tripId/operations/refresh", async (req, res) => {
+  try {
+    const trip = await refreshTripOperationalWorkflow(req.params.tripId);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found or no itinerary available." });
+      return;
+    }
+    res.json(trip);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to refresh operational checks." });
   }
 });
 

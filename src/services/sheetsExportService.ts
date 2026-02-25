@@ -3,6 +3,7 @@ import { createOAuthClient } from "../adapters/integrations/googleAuth";
 import { LoadedConversation } from "../conversations/sessionService";
 import { getGoogleRefreshToken } from "../adapters/persistence/googleTokens";
 import { getConversationStore } from "../adapters/persistence";
+import { finalizeDecisionPackageForTripSpec } from "./tripWorkflowService";
 
 export class HttpRouteError extends Error {
   status: number;
@@ -38,12 +39,22 @@ export async function exportSheetsForLoadedConversation(
   const client = createOAuthClient();
   client.setCredentials({ refresh_token: refreshToken });
   const sheet = await createSheetForTrip(client, loaded.conversation.tripSpec, decisionPackage);
-  await getConversationStore().updateConversation(loaded.conversation.id, { sheetUrl: sheet.sheetUrl });
+  const workflowDecision = finalizeDecisionPackageForTripSpec(loaded.conversation.tripSpec, decisionPackage, {
+    previousDecisionPackage: loaded.conversation.decisionPackage,
+    trigger: "workflow_refresh"
+  });
+  if (workflowDecision.workflow) {
+    workflowDecision.workflow.integrations.sheets.lastExportedAt = new Date().toISOString();
+  }
+  await getConversationStore().updateConversation(loaded.conversation.id, {
+    sheetUrl: sheet.sheetUrl,
+    decisionPackage: workflowDecision
+  });
 
   return {
     tripId: loaded.conversation.id,
     sheetUrl: sheet.sheetUrl,
-    decisionPackage,
+    decisionPackage: workflowDecision,
     googleLinked: true
   };
 }

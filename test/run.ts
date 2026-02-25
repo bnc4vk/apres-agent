@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 
 process.env.LLM_PROVIDER = "stub";
+process.env.LLM_PROFILE = "stub";
 process.env.PERSISTENCE_DRIVER = "memory";
 process.env.BOOKING_API_KEY = "";
 process.env.GOOGLE_PLACES_API_KEY = "";
@@ -303,6 +304,7 @@ async function testApi(deps: any) {
     .send({ sessionId, message: "3 from SF, 1 from Sacramento" });
   assert.equal(finalRes.status, 200);
   assert.equal(finalRes.body.replyKind, "final");
+  assert.ok(finalRes.body.decisionPackage?.workflow, "Expected workflow metadata on final decision package");
 
   const refineRes = await request(app)
     .post("/api/chat")
@@ -384,8 +386,49 @@ async function testTripApis(deps: any) {
   const refreshRes = await request(app).post(`/api/trips/${tripId}/options/refresh`);
   assert.equal(refreshRes.status, 200);
   assert.ok(Array.isArray(refreshRes.body.decisionPackage?.decisionMatrix));
+  assert.ok(refreshRes.body.decisionPackage?.workflow);
   const firstItineraryId = refreshRes.body.decisionPackage?.itineraries?.[0]?.id;
   assert.ok(firstItineraryId);
+
+  const sameSnapshotRecomputeRes = await request(app)
+    .post(`/api/trips/${tripId}/options/recompute`)
+    .send({ mode: "same_snapshot" });
+  assert.equal(sameSnapshotRecomputeRes.status, 200);
+  assert.equal(sameSnapshotRecomputeRes.body.decisionPackage?.workflow?.repeatability?.lastRecomputeMode, "same_snapshot");
+  assert.ok(
+    typeof sameSnapshotRecomputeRes.body.decisionPackage?.workflow?.repeatability?.latestDiff?.summary === "string" ||
+      sameSnapshotRecomputeRes.body.decisionPackage?.workflow?.repeatability?.latestDiff === null
+  );
+
+  const workflowActionsRes = await request(app)
+    .post(`/api/trips/${tripId}/workflow/actions`)
+    .send({
+      actions: [
+        { type: "task_patch", taskId: "booking-deposit", owner: "Lodging lead", dueDate: "2026-02-01" },
+        { type: "vote_cast", voteType: "budget_approval", choice: "Approve" },
+        { type: "comment_add", targetType: "task", targetId: "booking-deposit", message: "Deposit owner confirmed." }
+      ]
+    });
+  assert.equal(workflowActionsRes.status, 200);
+  assert.ok(
+    workflowActionsRes.body.decisionPackage?.workflow?.coordination?.tasks?.some(
+      (task: any) => task.id === "booking-deposit" && task.owner === "Lodging lead"
+    )
+  );
+  assert.ok(
+    workflowActionsRes.body.decisionPackage?.workflow?.coordination?.comments?.some(
+      (comment: any) => comment.targetId === "booking-deposit"
+    )
+  );
+
+  const opsRefreshRes = await request(app).post(`/api/trips/${tripId}/operations/refresh`);
+  assert.equal(opsRefreshRes.status, 200);
+  assert.ok(Array.isArray(opsRefreshRes.body.decisionPackage?.workflow?.operations?.checks));
+
+  const snapshotRes = await request(app).get(`/api/trips/${tripId}/workflow/snapshot`);
+  assert.equal(snapshotRes.status, 200);
+  assert.ok(snapshotRes.body.snapshotReport);
+  assert.ok(typeof snapshotRes.body.snapshotMarkdown === "string");
 
   const expandRes = await request(app).post(
     `/api/trips/${tripId}/itineraries/${encodeURIComponent(firstItineraryId)}/expand`

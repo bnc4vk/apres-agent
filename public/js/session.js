@@ -64,6 +64,17 @@ export async function refreshTripOptions(tripId) {
   return data;
 }
 
+export async function recomputeTripOptions(tripId, mode = "refresh_live") {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/options/recompute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to recompute trip options.");
+  return data;
+}
+
 export async function patchTripSpec(tripId, patch) {
   const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/spec`, {
     method: "PATCH",
@@ -72,6 +83,42 @@ export async function patchTripSpec(tripId, patch) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Failed to patch trip.");
+  return data;
+}
+
+export async function applyWorkflowActions(tripId, actions) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/workflow/actions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actions })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to update workflow.");
+  return data;
+}
+
+export async function exportWorkflowSnapshot(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/workflow/snapshot`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to export workflow snapshot.");
+  return data;
+}
+
+export async function validateLinkHealth(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/integrations/link-health/check`, {
+    method: "POST"
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to validate links.");
+  return data;
+}
+
+export async function refreshOperations(tripId) {
+  const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/operations/refresh`, {
+    method: "POST"
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Failed to refresh operations.");
   return data;
 }
 

@@ -1,15 +1,20 @@
 import {
+  applyWorkflowActions,
   bootstrapSplitwise,
   bootstrapTripChat,
   createTripRecord,
   exportTripSheets,
+  exportWorkflowSnapshot,
   fetchFieldLabels,
   fetchSession,
   patchTripSpec,
+  recomputeTripOptions,
+  refreshOperations,
   refreshTripOptions,
   requestItineraryExpansion,
   requestNewChat,
-  sendChatMessage
+  sendChatMessage,
+  validateLinkHealth
 } from "./session.js";
 import { createRenderer } from "./renderers.js";
 
@@ -49,6 +54,12 @@ const renderer = createRenderer({
   onLock: handleLockItinerary,
   onBootstrapSplitwise: handleBootstrapSplitwise,
   onBootstrapChat: handleBootstrapChat,
+  onRecompute: handleRecompute,
+  onWorkflowActions: handleWorkflowActions,
+  onExportSnapshot: handleExportSnapshot,
+  onValidateLinks: handleValidateLinks,
+  onRefreshOperations: handleRefreshOperations,
+  onApplyTemplate: handleApplyTemplate,
   fieldLabels: sharedFieldLabels
 });
 
@@ -224,6 +235,141 @@ async function handleRefreshOptions() {
     renderer.addMessage("assistant", "Refreshed live options and scoring.");
   } catch (error) {
     renderer.addMessage("assistant", "Couldn't refresh options right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleRecompute(mode) {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await recomputeTripOptions(tripId, mode || "refresh_live");
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    renderer.addMessage(
+      "assistant",
+      mode === "same_snapshot"
+        ? "Recomputed workflow using the same data snapshot."
+        : "Recomputed with refreshed live data."
+    );
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't recompute trip options right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleWorkflowActions(actions, successMessage) {
+  if (!tripId || inFlight || !Array.isArray(actions) || actions.length === 0) return;
+  setBusy(true);
+  try {
+    const data = await applyWorkflowActions(tripId, actions);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    if (successMessage) renderer.addMessage("assistant", successMessage);
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't update the workflow right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleExportSnapshot() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await exportWorkflowSnapshot(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    if (data.snapshotMarkdown) {
+      renderer.addMessage("assistant", `Workflow snapshot exported.\n\n${data.snapshotMarkdown}`);
+    } else {
+      renderer.addMessage("assistant", "Workflow snapshot exported.");
+    }
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't export a workflow snapshot right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleValidateLinks() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await validateLinkHealth(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    renderer.addMessage("assistant", "Validated planning link health.");
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't validate planning links right now.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleRefreshOperations() {
+  if (!tripId || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await refreshOperations(tripId);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    renderer.addMessage("assistant", "Refreshed operational readiness checks.");
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't refresh operational checks.");
+    console.error(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function handleApplyTemplate(template) {
+  if (!tripId || !template?.patch || inFlight) return;
+  setBusy(true);
+  try {
+    const data = await patchTripSpec(tripId, template.patch);
+    updateState({
+      tripId: data.tripId ?? tripId,
+      decisionPackage: data.decisionPackage ?? state.decisionPackage,
+      tripSpec: data.tripSpec,
+      sheetUrl: data.sheetUrl ?? state.sheetUrl,
+      googleLinked: typeof data.googleLinked === "boolean" ? data.googleLinked : state.googleLinked
+    });
+    renderer.addMessage("assistant", `Applied template: ${template.name}.`);
+  } catch (error) {
+    renderer.addMessage("assistant", "Couldn't apply that template.");
     console.error(error);
   } finally {
     setBusy(false);

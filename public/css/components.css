@@ -335,3 +335,163 @@
     transform: translateY(0);
   }
 }
+
+.workflow-stage-rail .small-muted,
+.comment-thread .small-muted {
+  margin-bottom: 6px;
+}
+
+.stage-rail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 6px;
+}
+
+.stage-pill {
+  border: 1px solid rgba(96, 136, 167, 0.24);
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(246, 252, 255, 0.95);
+  display: grid;
+  gap: 3px;
+}
+
+.stage-pill strong {
+  font-size: 0.76rem;
+  color: #21445f;
+}
+
+.stage-pill span {
+  font-size: 0.72rem;
+  color: #58778d;
+  text-transform: capitalize;
+}
+
+.stage-pill.done {
+  background: rgba(229, 249, 238, 0.96);
+  border-color: rgba(84, 166, 122, 0.24);
+}
+
+.stage-pill.in_progress {
+  background: rgba(234, 245, 255, 0.96);
+}
+
+.stage-pill.blocked {
+  background: rgba(255, 243, 234, 0.96);
+  border-color: rgba(195, 134, 76, 0.26);
+}
+
+.workflow-list {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-list-row,
+.workflow-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(112, 153, 182, 0.14);
+  background: rgba(248, 252, 255, 0.9);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: #3e647e;
+}
+
+.workflow-list-row.todo {
+  background: rgba(255, 249, 241, 0.9);
+}
+
+.workflow-list-row.done {
+  background: rgba(236, 250, 242, 0.92);
+}
+
+.workflow-list-row.warning {
+  background: rgba(255, 243, 235, 0.92);
+}
+
+.workflow-list-row.ok {
+  background: rgba(236, 250, 242, 0.92);
+}
+
+.workflow-queue-item {
+  align-items: flex-start;
+}
+
+.workflow-queue-item > div:first-child {
+  flex: 1;
+}
+
+.mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ghost-btn.mini {
+  padding: 5px 7px;
+  font-size: 0.72rem;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 144, 177, 0.26);
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: #325a78;
+  background: rgba(243, 250, 255, 0.9);
+}
+
+.badge.confirmed {
+  background: rgba(234, 249, 240, 0.95);
+  border-color: rgba(81, 161, 116, 0.25);
+  color: #2b6a46;
+}
+
+.badge.assumed {
+  background: rgba(255, 247, 233, 0.96);
+  border-color: rgba(190, 145, 79, 0.25);
+  color: #8a5c18;
+}
+
+.badge.freshness.fresh {
+  background: rgba(234, 249, 240, 0.95);
+  color: #2b6a46;
+}
+
+.badge.freshness.aging {
+  background: rgba(255, 247, 233, 0.96);
+  color: #8a5c18;
+}
+
+.badge.freshness.stale,
+.badge.freshness.unknown {
+  background: rgba(255, 239, 239, 0.95);
+  color: #8a2d2d;
+}
+
+.comment-thread {
+  margin-bottom: 8px;
+}
+
+.comment-thread p {
+  margin: 0 0 4px;
+}
+
+@media (max-width: 860px) {
+  .stage-rail {
+    grid-template-columns: 1fr 1fr;
+  }
+}

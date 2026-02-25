@@ -76,3 +76,51 @@ Notes:
   - higher-stakes itinerary generation
   - A/B quality comparisons
 
+## Validation Update (Workflow Roadmap Session)
+
+Commands run:
+
+```bash
+EVAL_SCENARIO_IDS=co_epic_mixed EVAL_SKIP_INTERMEDIATE_REVIEW=1 LLM_PROFILE=mistral_free npm run eval:trip
+EVAL_SCENARIO_IDS=utah_ikon_group EVAL_SKIP_INTERMEDIATE_REVIEW=1 LLM_PROFILE=mistral_free npm run eval:trip
+EVAL_SCENARIO_IDS=tahoe_budget_drive EVAL_SKIP_INTERMEDIATE_REVIEW=1 LLM_PROFILE=mistral_free npm run eval:trip
+
+EVAL_SCENARIO_IDS=co_epic_mixed \
+EVAL_SKIP_INTERMEDIATE_REVIEW=1 \
+OPENAI_HTTP_TIMEOUT_MS=20000 \
+OPENAI_REVIEW_HTTP_TIMEOUT_MS=120000 \
+OPENAI_REVIEW_MAX_COMPLETION_TOKENS=4000 \
+OPENAI_REASONING_EFFORT=low \
+LLM_PROFILE=openai_sota \
+npm run eval:trip
+```
+
+Scenarios tested:
+
+- `co_epic_mixed` (Mistral + OpenAI spot-check)
+- `utah_ikon_group` (Mistral)
+- `tahoe_budget_drive` (Mistral)
+
+`EVAL_SKIP_INTERMEDIATE_REVIEW`:
+
+- Used (`1`) for all runs
+
+### `mistral_free`
+
+- All 3 targeted scenario runs generated successfully (`generated=true`)
+- All 3 kept location compliance and `costDistinctCount=3`
+- All 3 attached final review metadata (`review=true`)
+
+### `openai_sota` (single spot-check)
+
+- `co_epic_mixed` generated successfully and preserved location compliance / cost diversity
+- Final grounded review did not attach in this run (`review=false`, no AI rationale on candidates)
+- No quota/billing error; run completed normally
+
+Key takeaway:
+
+- In this session's targeted checks, `mistral_free` was stable enough for validation, while the OpenAI spot-check regressed on final review attachment (despite successful generation).
+
+Quota/cost failures:
+
+- None encountered in this update

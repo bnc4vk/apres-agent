@@ -11,6 +11,12 @@ export function createRenderer({
   onLock,
   onBootstrapSplitwise,
   onBootstrapChat,
+  onRecompute,
+  onWorkflowActions,
+  onExportSnapshot,
+  onValidateLinks,
+  onRefreshOperations,
+  onApplyTemplate,
   fieldLabels = {}
 }) {
   function addMessage(role, content) {
@@ -77,12 +83,34 @@ export function createRenderer({
     const checklist = renderChecklist(state.tripSpec);
     if (checklist) actions.appendChild(checklist);
     if (!state.decisionPackage) return;
+    const workflow = state.decisionPackage.workflow || null;
+
+    const stageRail = renderWorkflowStageRail(workflow);
+    if (stageRail) actions.appendChild(stageRail);
+
+    const bookingReadiness = renderBookingReadiness(workflow);
+    if (bookingReadiness) actions.appendChild(bookingReadiness);
+
+    const assumptionQueue = renderAssumptionQueue(workflow);
+    if (assumptionQueue) actions.appendChild(assumptionQueue);
 
     const summary = renderBudgetSummary(state.decisionPackage?.budgetSummary);
     if (summary) actions.appendChild(summary);
 
     const controls = renderControlRow(state);
     if (controls) actions.appendChild(controls);
+
+    const coordination = renderCoordinationPanel(state);
+    if (coordination) actions.appendChild(coordination);
+
+    const repeatability = renderRepeatabilityPanel(state);
+    if (repeatability) actions.appendChild(repeatability);
+
+    const integrations = renderIntegrationsPanel(state);
+    if (integrations) actions.appendChild(integrations);
+
+    const operations = renderOperationsPanel(state);
+    if (operations) actions.appendChild(operations);
 
     const aiReview = renderAiReviewSummary(state.decisionPackage);
     if (aiReview) actions.appendChild(aiReview);
@@ -94,6 +122,8 @@ export function createRenderer({
     grid.className = "card-grid";
 
     (state.decisionPackage.itineraries ?? []).forEach((itinerary) => {
+      const itineraryAudit =
+        workflow?.itineraryAudit?.find((item) => item.itineraryId === itinerary.id) ?? null;
       const card = document.createElement("div");
       card.className = "card";
 
@@ -134,7 +164,9 @@ export function createRenderer({
         : "Top stay: use Lodging link to fetch current inventory.";
 
       const costBreakdown = renderCostBreakdown(itinerary.budgetEstimate);
+      const auditBadges = renderItineraryAuditBadges(itineraryAudit);
       const aiCardReview = renderItineraryAiReview(itinerary.aiReview);
+      const commentThread = renderCommentThread(workflow, "itinerary", itinerary.id);
       const lodgingOptions = renderLodgingOptions(itinerary.liveOptions?.lodging, itinerary.researchLinks);
 
       const button = document.createElement("button");
@@ -151,7 +183,55 @@ export function createRenderer({
       actionRow.className = "card-actions";
       actionRow.append(button, lockBtn);
 
-      card.append(title, summaryCopy, budget, source, costBreakdown, aiCardReview, liveBlurb, lodgingOptions, linksHint, links, actionRow);
+      const voteBtn = document.createElement("button");
+      voteBtn.textContent = "Vote Resort";
+      voteBtn.className = "ghost-btn";
+      voteBtn.addEventListener("click", () =>
+        onWorkflowActions?.(
+          [{ type: "vote_cast", voteType: "final_resort_vote", choice: itinerary.resortName }],
+          `Voted for ${itinerary.resortName}.`
+        )
+      );
+
+      const commentBtn = document.createElement("button");
+      commentBtn.textContent = "Comment";
+      commentBtn.className = "ghost-btn";
+      commentBtn.addEventListener("click", () => {
+        const message = window.prompt(`Comment on ${itinerary.resortName}:`);
+        if (!message) return;
+        onWorkflowActions?.(
+          [{ type: "comment_add", targetType: "itinerary", targetId: itinerary.id, message }],
+          "Added itinerary comment."
+        );
+      });
+
+      const lockLodgingBtn = document.createElement("button");
+      lockLodgingBtn.textContent = "Lock Lodging";
+      lockLodgingBtn.className = "ghost-btn";
+      lockLodgingBtn.addEventListener("click", () => {
+        const lodgingName = topLodging?.name || "Preferred lodging";
+        onWorkflowActions?.(
+          [{ type: "decision_lock", decisionType: "lodging", value: `${itinerary.resortName}: ${lodgingName}` }],
+          `Locked lodging for ${itinerary.resortName}.`
+        );
+      });
+      actionRow.append(voteBtn, commentBtn, lockLodgingBtn);
+
+      card.append(
+        title,
+        summaryCopy,
+        budget,
+        auditBadges,
+        source,
+        costBreakdown,
+        aiCardReview,
+        commentThread,
+        liveBlurb,
+        lodgingOptions,
+        linksHint,
+        links,
+        actionRow
+      );
       grid.appendChild(card);
     });
 
@@ -259,8 +339,332 @@ export function createRenderer({
     chatBtn.textContent = "Bootstrap Group Chat";
     chatBtn.addEventListener("click", onBootstrapChat);
 
-    row.append(refresh, splitwise, chatBtn);
+    const recomputeSame = document.createElement("button");
+    recomputeSame.className = "ghost-btn";
+    recomputeSame.textContent = "Recompute (Same Snapshot)";
+    recomputeSame.addEventListener("click", () => onRecompute?.("same_snapshot"));
+
+    const recomputeLive = document.createElement("button");
+    recomputeLive.className = "ghost-btn";
+    recomputeLive.textContent = "Recompute (Refresh Live)";
+    recomputeLive.addEventListener("click", () => onRecompute?.("refresh_live"));
+
+    const checkLinks = document.createElement("button");
+    checkLinks.className = "ghost-btn";
+    checkLinks.textContent = "Check Links";
+    checkLinks.addEventListener("click", onValidateLinks);
+
+    const refreshOps = document.createElement("button");
+    refreshOps.className = "ghost-btn";
+    refreshOps.textContent = "Refresh Ops Checks";
+    refreshOps.addEventListener("click", onRefreshOperations);
+
+    const snapshot = document.createElement("button");
+    snapshot.className = "ghost-btn";
+    snapshot.textContent = "Export Snapshot";
+    snapshot.addEventListener("click", onExportSnapshot);
+
+    row.append(refresh, recomputeSame, recomputeLive, checkLinks, refreshOps, snapshot, splitwise, chatBtn);
     return row;
+  }
+
+  function renderWorkflowStageRail(workflow) {
+    if (!workflow?.stages?.length) return null;
+    const box = document.createElement("div");
+    box.className = "card workflow-stage-rail";
+    const title = document.createElement("h3");
+    title.textContent = "Workflow Spine";
+    box.appendChild(title);
+
+    const current = document.createElement("p");
+    current.className = "small-muted";
+    current.textContent = `Current stage: ${labelize(workflow.currentStage)}`;
+    box.appendChild(current);
+
+    const rail = document.createElement("div");
+    rail.className = "stage-rail";
+    workflow.stages.forEach((stage) => {
+      const pill = document.createElement("div");
+      pill.className = `stage-pill ${stage.status}`;
+      pill.innerHTML = `<strong>${stage.label}</strong><span>${stage.status.replace("_", " ")}</span>`;
+      if (Array.isArray(stage.blockers) && stage.blockers.length) {
+        pill.title = stage.blockers.join("\n");
+      }
+      rail.appendChild(pill);
+    });
+    box.appendChild(rail);
+    return box;
+  }
+
+  function renderBookingReadiness(workflow) {
+    if (!workflow?.bookingReadiness) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Booking Readiness";
+    box.appendChild(title);
+
+    const summary = document.createElement("p");
+    summary.className = "small-muted";
+    summary.textContent = workflow.bookingReadiness.ready
+      ? "Booking-ready: all required checklist items are complete."
+      : `${workflow.bookingReadiness.remainingCount} checklist item(s) remaining before booking-ready.`;
+    box.appendChild(summary);
+
+    const list = document.createElement("div");
+    list.className = "workflow-list";
+    (workflow.bookingReadiness.items || []).forEach((item) => {
+      const row = document.createElement("div");
+      row.className = `workflow-list-row ${item.done ? "done" : "todo"}`;
+      row.innerHTML = `<span>${item.done ? "✓" : "•"} ${item.label}</span><span>${item.detail || (item.done ? "Done" : "Open")}</span>`;
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
+  function renderAssumptionQueue(workflow) {
+    if (!workflow?.assumptions?.queue?.length) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Assumption Review Queue";
+    box.appendChild(title);
+    const subtitle = document.createElement("p");
+    subtitle.className = "small-muted";
+    subtitle.textContent = `Pending ${workflow.assumptions.counts?.pending ?? 0} • Accepted ${workflow.assumptions.counts?.accepted ?? 0} • Dismissed ${workflow.assumptions.counts?.dismissed ?? 0}`;
+    box.appendChild(subtitle);
+
+    const rows = document.createElement("div");
+    rows.className = "workflow-list";
+    workflow.assumptions.queue.slice(0, 8).forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "workflow-queue-item";
+      const text = document.createElement("div");
+      text.innerHTML = `<strong>${item.label}</strong><div class="small-muted">${item.summary}</div>`;
+      const controls = document.createElement("div");
+      controls.className = "mini-actions";
+      const accept = miniAction("Accept", () =>
+        onWorkflowActions?.([{ type: "assumption_review", itemId: item.id, status: "accepted" }], "Assumption marked accepted.")
+      );
+      const dismiss = miniAction("Dismiss", () =>
+        onWorkflowActions?.([{ type: "assumption_review", itemId: item.id, status: "dismissed" }], "Assumption dismissed.")
+      );
+      controls.append(accept, dismiss);
+      row.append(text, controls);
+      rows.appendChild(row);
+    });
+    box.appendChild(rows);
+    return box;
+  }
+
+  function renderCoordinationPanel(state) {
+    const workflow = state.decisionPackage?.workflow;
+    if (!workflow) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Coordination";
+    box.appendChild(title);
+
+    const roles = document.createElement("p");
+    roles.className = "small-muted";
+    roles.textContent = `Roles: ${(workflow.coordination.roles || [])
+      .map((role) => `${role.displayName} (${labelize(role.role)})`)
+      .join(" • ")}`;
+    box.appendChild(roles);
+
+    const roleButton = document.createElement("button");
+    roleButton.className = "ghost-btn";
+    roleButton.textContent = "Assign Role";
+    roleButton.addEventListener("click", () => {
+      const userId = window.prompt("User ID (example: member_2)");
+      if (!userId) return;
+      const role = window.prompt("Role: planner_admin | member | approver", "member");
+      if (!role) return;
+      onWorkflowActions?.([{ type: "role_upsert", userId, role }], "Role updated.");
+    });
+    box.appendChild(roleButton);
+
+    const votesWrap = document.createElement("div");
+    votesWrap.className = "workflow-list";
+    (workflow.coordination.votes || []).forEach((vote) => {
+      const row = document.createElement("div");
+      row.className = "workflow-queue-item";
+      const winner = vote.winner ? ` • leader: ${vote.winner}` : "";
+      row.innerHTML = `<div><strong>${vote.title}</strong><div class="small-muted">${vote.status}${winner} • ${vote.ballots?.length || 0} vote(s)</div></div>`;
+      const actions = document.createElement("div");
+      actions.className = "mini-actions";
+      if (vote.options?.length) {
+        const cast = miniAction("Vote", () => {
+          const choice = window.prompt(`${vote.title} choice:\n${vote.options.join("\n")}`, vote.options[0] || "");
+          if (!choice) return;
+          onWorkflowActions?.([{ type: "vote_cast", voteType: vote.type, choice }], `Vote recorded for ${vote.title}.`);
+        });
+        actions.appendChild(cast);
+      }
+      const close = miniAction("Close", () =>
+        onWorkflowActions?.([{ type: "vote_close", voteType: vote.type }], `${vote.title} closed.`)
+      );
+      actions.appendChild(close);
+      row.appendChild(actions);
+      votesWrap.appendChild(row);
+    });
+    box.appendChild(votesWrap);
+
+    const taskTitle = document.createElement("p");
+    taskTitle.className = "small-muted";
+    taskTitle.textContent = "Critical booking tasks (owner + due date required):";
+    box.appendChild(taskTitle);
+    box.appendChild(renderTaskList(workflow));
+    return box;
+  }
+
+  function renderTaskList(workflow) {
+    const list = document.createElement("div");
+    list.className = "workflow-list";
+    (workflow.coordination.tasks || []).slice(0, 8).forEach((task) => {
+      const row = document.createElement("div");
+      row.className = "workflow-queue-item";
+      const thread = renderCommentThread(workflow, "task", task.id);
+      const left = document.createElement("div");
+      left.innerHTML = `<strong>${task.title}</strong><div class="small-muted">${task.status} • owner ${task.owner || "TBD"} • due ${task.dueDate || "TBD"} • reminder ${task.reminderDaysBefore}d</div>`;
+      const actions = document.createElement("div");
+      actions.className = "mini-actions";
+      actions.append(
+        miniAction("Assign", () => {
+          const owner = window.prompt(`Owner for "${task.title}"`, task.owner || "");
+          if (owner === null) return;
+          onWorkflowActions?.([{ type: "task_patch", taskId: task.id, owner }], "Task owner updated.");
+        }),
+        miniAction("Due", () => {
+          const dueDate = window.prompt(`Due date YYYY-MM-DD for "${task.title}"`, task.dueDate || "");
+          if (dueDate === null) return;
+          onWorkflowActions?.([{ type: "task_patch", taskId: task.id, dueDate: dueDate || null }], "Task due date updated.");
+        }),
+        miniAction(task.status === "done" ? "Reopen" : "Done", () =>
+          onWorkflowActions?.(
+            [{ type: "task_patch", taskId: task.id, status: task.status === "done" ? "todo" : "done" }],
+            `Task "${task.title}" updated.`
+          )
+        ),
+        miniAction("Comment", () => {
+          const message = window.prompt(`Comment on task "${task.title}"`);
+          if (!message) return;
+          onWorkflowActions?.([{ type: "comment_add", targetType: "task", targetId: task.id, message }], "Task comment added.");
+        })
+      );
+      row.append(left, actions);
+      list.appendChild(row);
+      if (thread.childNodes.length) list.appendChild(thread);
+    });
+    return list;
+  }
+
+  function renderRepeatabilityPanel(state) {
+    const workflow = state.decisionPackage?.workflow;
+    if (!workflow) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Repeatability + Auditability";
+    box.appendChild(title);
+
+    const runs = workflow.repeatability?.runs || [];
+    const latest = runs[runs.length - 1];
+    const runLine = document.createElement("p");
+    runLine.className = "small-muted";
+    runLine.textContent = latest
+      ? `Latest run ${latest.runId} • ${latest.trigger} • ${latest.llmProfile}/${latest.llmModel} • snapshot ${latest.dataSnapshotDigest}`
+      : "No run metadata yet.";
+    box.appendChild(runLine);
+
+    if (workflow.repeatability?.latestDiff) {
+      const diff = document.createElement("p");
+      diff.className = "small-muted";
+      diff.textContent = workflow.repeatability.latestDiff.summary;
+      box.appendChild(diff);
+    }
+
+    const templateRow = document.createElement("div");
+    templateRow.className = "link-row";
+    (workflow.repeatability.templates || []).forEach((template) => {
+      const btn = document.createElement("button");
+      btn.className = "ghost-btn";
+      btn.textContent = template.name;
+      btn.addEventListener("click", () => {
+        if (window.confirm(`Apply template "${template.name}" to this trip spec?`)) onApplyTemplate?.(template);
+      });
+      templateRow.appendChild(btn);
+    });
+    box.appendChild(templateRow);
+    return box;
+  }
+
+  function renderIntegrationsPanel(state) {
+    const workflow = state.decisionPackage?.workflow;
+    if (!workflow) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Integration Hardening";
+    box.appendChild(title);
+
+    const linkHealth = workflow.integrations?.linkHealth;
+    const broken = (linkHealth?.records || []).filter((r) => r.status === "broken").length;
+    const warn = (linkHealth?.records || []).filter((r) => r.status === "warning").length;
+    const line = document.createElement("p");
+    line.className = "small-muted";
+    line.textContent = `Link health: checked ${linkHealth?.lastCheckedAt || "never"} • broken ${broken} • warnings ${warn}`;
+    box.appendChild(line);
+
+    const sheets = document.createElement("p");
+    sheets.className = "small-muted";
+    sheets.textContent = `Sheets stable columns: ${(workflow.integrations?.sheets?.stableColumns || []).join(", ")}`;
+    box.appendChild(sheets);
+
+    const calendar = document.createElement("p");
+    calendar.className = "small-muted";
+    calendar.textContent = `Calendar draft events: ${workflow.integrations?.calendarDraft?.events?.length || 0}`;
+    box.appendChild(calendar);
+
+    const messaging = document.createElement("div");
+    messaging.className = "workflow-list";
+    (workflow.integrations?.messaging?.reminderNudges || []).slice(0, 4).forEach((nudge) => {
+      const row = document.createElement("div");
+      row.className = "workflow-list-row";
+      row.innerHTML = `<span>${nudge.kind}</span><span>${nudge.message}</span>`;
+      messaging.appendChild(row);
+    });
+    box.appendChild(messaging);
+    return box;
+  }
+
+  function renderOperationsPanel(state) {
+    const workflow = state.decisionPackage?.workflow;
+    if (!workflow) return null;
+    const box = document.createElement("div");
+    box.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = "Operational Intelligence";
+    box.appendChild(title);
+
+    const score = document.createElement("p");
+    score.className = "small-muted";
+    score.textContent = `Trip week readiness: ${workflow.operations?.tripWeekReadinessScore ?? 0}%`;
+    box.appendChild(score);
+
+    const list = document.createElement("div");
+    list.className = "workflow-list";
+    (workflow.operations?.checks || []).forEach((check) => {
+      const row = document.createElement("div");
+      row.className = `workflow-list-row ${check.status}`;
+      row.innerHTML = `<span>${check.label}</span><span>${check.status}</span>`;
+      row.title = check.summary;
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    return box;
   }
 
   function renderDecisionMatrix(rows) {
@@ -336,6 +740,55 @@ export function createRenderer({
     });
     wrap.appendChild(detailList);
     return wrap;
+  }
+
+  function renderItineraryAuditBadges(audit) {
+    const wrap = document.createElement("div");
+    wrap.className = "badge-row";
+    if (!audit) return wrap;
+
+    const freshness = document.createElement("span");
+    freshness.className = `badge freshness ${audit.sourceFreshness?.overall || "unknown"}`;
+    freshness.textContent = audit.sourceFreshness?.overallLabel || "Source freshness unknown";
+    wrap.appendChild(freshness);
+
+    (audit.confirmedTags || []).slice(0, 3).forEach((tag) => {
+      const el = document.createElement("span");
+      el.className = "badge confirmed";
+      el.textContent = tag;
+      wrap.appendChild(el);
+    });
+    (audit.assumptionTags || []).slice(0, 3).forEach((tag) => {
+      const el = document.createElement("span");
+      el.className = "badge assumed";
+      el.textContent = tag;
+      wrap.appendChild(el);
+    });
+    return wrap;
+  }
+
+  function renderCommentThread(workflow, targetType, targetId) {
+    const wrap = document.createElement("div");
+    wrap.className = "comment-thread";
+    const comments = (workflow?.coordination?.comments || []).filter(
+      (comment) => comment.targetType === targetType && comment.targetId === targetId
+    );
+    comments.slice(-2).forEach((comment) => {
+      const line = document.createElement("p");
+      line.className = "small-muted";
+      line.textContent = `${comment.author}: ${comment.message}`;
+      wrap.appendChild(line);
+    });
+    return wrap;
+  }
+
+  function miniAction(label, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost-btn mini";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
   function renderLinkRow(researchLinks) {
@@ -526,6 +979,12 @@ function formatVerdict(verdict) {
     backup: "Backup"
   };
   return map[verdict] || verdict || "Review";
+}
+
+function labelize(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 function parseMessageWithLinks(content) {

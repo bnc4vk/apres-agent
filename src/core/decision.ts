@@ -8,6 +8,7 @@ import { CarOption, LodgingOption } from "./supply";
 import { buildOpsBoard, OpsBoard } from "./opsBoard";
 import { findResortByName } from "./resorts";
 import { scoreResortForTrip } from "./snow";
+import type { TripWorkflowState } from "./tripWorkflow";
 
 export type DecisionMatrixRow = {
   itineraryId: string;
@@ -35,6 +36,7 @@ export type DecisionPackage = ItineraryPlan & {
   budgetSummary: BudgetSummary;
   decisionMatrix: DecisionMatrixRow[];
   opsBoard: OpsBoard;
+  workflow?: TripWorkflowState;
   aiReview?: {
     summary: string;
     methodology: string;

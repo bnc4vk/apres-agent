@@ -89,6 +89,8 @@ async function writeSummary(sheets: any, spreadsheetId: string, spec: TripSpec, 
 }
 
 async function writeItineraries(sheets: any, spreadsheetId: string, decision: DecisionPackage) {
+  const workflow = decision.workflow;
+  const auditById = new Map((workflow?.itineraryAudit ?? []).map((item) => [item.itineraryId, item]));
   const header = [
     "Option",
     "Resort",
@@ -111,31 +113,46 @@ async function writeItineraries(sheets: any, spreadsheetId: string, decision: De
     "Takeout restaurants",
     "Lodging source",
     "Cars source",
-    "Data fetched at"
+    "Data fetched at",
+    "Workflow stage",
+    "Source freshness",
+    "Confirmation status",
+    "Assumption tags"
   ];
   const rows = decision.itineraries.map((itinerary) => [
-    itinerary.title,
-    itinerary.resortName,
-    itinerary.dateRange?.label ?? "TBD",
-    itinerary.lodgingArea,
-    itinerary.summary,
-    itinerary.snowAssessment,
-    itinerary.lodgingBudgetPerPerson ?? "",
-    itinerary.budgetEstimate.perPersonTotal ?? "",
-    itinerary.budgetEstimate.feasible === null ? "" : itinerary.budgetEstimate.feasible ? "Yes" : "No",
-    itinerary.budgetEstimate.components.pass ?? "",
-    itinerary.budgetEstimate.components.travel ?? "",
-    itinerary.budgetEstimate.components.food ?? "",
-    itinerary.budgetEstimate.components.gear_rental ?? "",
-    itinerary.budgetEstimate.components.housing ?? "",
-    itinerary.researchLinks.lodgingSearch,
-    itinerary.researchLinks.carRentalCompare ?? "",
-    itinerary.researchLinks.gearSearch,
-    itinerary.researchLinks.grocerySearch,
-    itinerary.researchLinks.takeoutSearch,
-    itinerary.liveOptions?.lodging?.[0]?.sourceMeta.source ?? "estimated",
-    itinerary.liveOptions?.cars?.[0]?.sourceMeta.source ?? "estimated",
-    itinerary.liveOptions?.lodging?.[0]?.sourceMeta.fetchedAt ?? ""
+    ...(function () {
+      const audit = auditById.get(itinerary.id);
+      const confirmationStatus = (audit?.confirmedTags ?? []).length > 0 ? "confirmed_partial" : "assumptions_present";
+      const assumptionTags = (audit?.assumptionTags ?? []).join(" | ");
+      return [
+        itinerary.title,
+        itinerary.resortName,
+        itinerary.dateRange?.label ?? "TBD",
+        itinerary.lodgingArea,
+        itinerary.summary,
+        itinerary.snowAssessment,
+        itinerary.lodgingBudgetPerPerson ?? "",
+        itinerary.budgetEstimate.perPersonTotal ?? "",
+        itinerary.budgetEstimate.feasible === null ? "" : itinerary.budgetEstimate.feasible ? "Yes" : "No",
+        itinerary.budgetEstimate.components.pass ?? "",
+        itinerary.budgetEstimate.components.travel ?? "",
+        itinerary.budgetEstimate.components.food ?? "",
+        itinerary.budgetEstimate.components.gear_rental ?? "",
+        itinerary.budgetEstimate.components.housing ?? "",
+        itinerary.researchLinks.lodgingSearch,
+        itinerary.researchLinks.carRentalCompare ?? "",
+        itinerary.researchLinks.gearSearch,
+        itinerary.researchLinks.grocerySearch,
+        itinerary.researchLinks.takeoutSearch,
+        itinerary.liveOptions?.lodging?.[0]?.sourceMeta.source ?? "estimated",
+        itinerary.liveOptions?.cars?.[0]?.sourceMeta.source ?? "estimated",
+        itinerary.liveOptions?.lodging?.[0]?.sourceMeta.fetchedAt ?? "",
+        workflow?.currentStage ?? "",
+        audit?.sourceFreshness?.overallLabel ?? "",
+        confirmationStatus,
+        assumptionTags
+      ];
+    })()
   ]);
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -276,12 +293,28 @@ async function writeVendors(sheets: any, spreadsheetId: string, decision: Decisi
 }
 
 async function writeTasks(sheets: any, spreadsheetId: string, decision: DecisionPackage) {
-  const header = ["Task", "Owner", "Due date", "Status", "Notes"];
-  const rows = (decision.opsBoard.tasks ?? []).map((task) => [
+  const workflow = decision.workflow;
+  const workflowTasks = workflow?.coordination?.tasks ?? [];
+  const header = [
+    "Task",
+    "Workflow stage",
+    "Assignee",
+    "Due date",
+    "Status",
+    "Reminder days",
+    "Critical",
+    "Confirmation status",
+    "Notes"
+  ];
+  const rows = (workflowTasks.length ? workflowTasks : (decision.opsBoard.tasks ?? [])).map((task: any) => [
     task.title,
+    workflow?.currentStage ?? "",
     task.owner,
     task.dueDate ?? "",
     task.status,
+    task.reminderDaysBefore ?? "",
+    typeof task.critical === "boolean" ? (task.critical ? "Yes" : "No") : "",
+    task.status === "done" ? "confirmed" : "pending",
     task.notes
   ]);
   await sheets.spreadsheets.values.update({
