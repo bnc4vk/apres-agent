@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trip Results</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="panel results-panel">
+        <header class="page-header results-header">
+          <div>
+            <p class="eyebrow">ChatGPT Output</p>
+            <h1>Generated itineraries</h1>
+          </div>
+          <a href="/" class="secondary-link">New trip</a>
+        </header>
+
+        <div id="results-error" class="error-banner" hidden></div>
+
+        <section class="chat-thread" aria-label="Prompt and response">
+          <article class="chat-bubble assistant-bubble">
+            <div class="assistant-bubble-top">
+              <p class="bubble-label">Formatted itinerary tiles</p>
+              <p id="model-line" class="model-line"></p>
+            </div>
+            <div id="formatted-results" class="formatted-results"></div>
+            <details class="raw-toggle">
+              <summary>View raw ChatGPT interaction</summary>
+              <p class="bubble-label raw-label">Prompt sent to ChatGPT 5.2</p>
+              <pre id="prompt-text" class="bubble-pre raw-pre"></pre>
+              <p class="bubble-label raw-label">Raw ChatGPT response</p>
+              <pre id="response-text" class="bubble-pre raw-pre"></pre>
+            </details>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/results.js"></script>
+  </body>
+  </html>
