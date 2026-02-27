@@ -10,13 +10,13 @@
     <main class="page-shell">
       <section class="panel">
         <header class="page-header">
-          <div>
-            <p class="eyebrow">Bare Minimum Flow</p>
+          <div class="header-main">
+            <p class="eyebrow">Trip planner</p>
             <h1>Trip setup</h1>
+            <p class="subhead">
+              Share your dates, group, and preferences. We will generate tailored ski trip options in one step.
+            </p>
           </div>
-          <p class="subhead">
-            Fill out the trip inputs, generate one consolidated prompt, send it to ChatGPT 5.2, then review the raw response on a separate results page.
-          </p>
         </header>
 
         <form id="trip-intake-form" class="trip-intake-form">
@@ -30,22 +30,27 @@
                   <input name="flexible_dates_enabled" type="checkbox" disabled />
                   Flexible dates (disabled in this minimal version)
                 </label>
-                <label>
-                  Start date
-                  <input id="trip-start-date" name="start_date" type="date" required />
-                </label>
-                <label>
-                  End date
-                  <input id="trip-end-date" name="end_date" type="date" required />
-                </label>
+                <div class="manual-date-fields">
+                  <p class="field-subheading">Manual date edit</p>
+                  <label>
+                    Start date
+                    <input id="trip-start-date" name="start_date" type="date" required />
+                  </label>
+                  <label>
+                    End date
+                    <input id="trip-end-date" name="end_date" type="date" required />
+                  </label>
+                </div>
+                <p id="date-range-hint" class="inline-hint" hidden></p>
                 <label class="checkbox-line">
-                  <input name="open_to_suggestions" type="checkbox" />
+                  <input id="open-to-suggestions" name="open_to_suggestions" type="checkbox" />
                   Open to destination suggestions
                 </label>
-                <label>
+                <label id="destination-field">
                   Destination / region preference (optional)
-                  <input name="destination_preference" type="text" placeholder="Utah, Tahoe, Aspen..." />
+                  <input id="destination-preference" name="destination_preference" type="text" placeholder="Utah, Tahoe, Aspen..." />
                 </label>
+                <p id="destination-hint" class="inline-hint" hidden></p>
               </section>
 
               <section class="field-card">
@@ -64,7 +69,7 @@
                   </select>
                 </label>
                 <fieldset>
-                  <legend>Skill levels (select all that apply)</legend>
+                  <legend>Skill levels</legend>
                   <div class="check-grid">
                     <label><input type="checkbox" name="skill_levels" value="beginner" /> Beginner</label>
                     <label><input type="checkbox" name="skill_levels" value="intermediate" /> Intermediate</label>
@@ -72,23 +77,25 @@
                     <label><input type="checkbox" name="skill_levels" value="expert" /> Expert</label>
                   </div>
                 </fieldset>
+                <p id="skills-hint" class="inline-hint" hidden></p>
               </section>
 
               <section class="field-card">
                 <h2>Travel</h2>
                 <label>
                   Travel mode
-                  <select name="travel_mode">
+                  <select id="travel-mode" name="travel_mode">
                     <option value="" selected>Select travel mode...</option>
                     <option value="flexible">Can fly or drive</option>
                     <option value="drive_only">Drive only</option>
                     <option value="mixed_driver_required">Some can fly, but at least 1 must drive</option>
                   </select>
                 </label>
-                <label>
+                <label id="max-drive-hours-field" hidden>
                   Max drive hours (optional)
-                  <input name="max_drive_hours" type="number" min="1" max="24" step="1" placeholder="6" />
+                  <input id="max-drive-hours" name="max_drive_hours" type="number" min="1" max="24" step="1" placeholder="6" />
                 </label>
+                <p id="travel-hint" class="inline-hint" hidden></p>
               </section>
             </div>
 
@@ -130,37 +137,43 @@
                     <option value="separate_rooms">Separate rooms in a lodge/hotel</option>
                   </select>
                 </label>
-                <label>
-                  Minimum bedrooms (optional)
-                  <input name="min_bedrooms" type="number" min="1" step="1" placeholder="3" />
-                </label>
-                <label>
-                  Max walk minutes to lift (optional)
-                  <input name="max_walk_minutes" type="number" min="1" step="1" placeholder="10" />
-                </label>
-                <div class="check-grid">
-                  <label><input name="hot_tub_required" type="checkbox" /> Hot tub</label>
-                  <label><input name="kitchen_required" type="checkbox" /> Kitchen</label>
-                  <label><input name="laundry_required" type="checkbox" /> Laundry</label>
-                </div>
+                <details id="lodging-advanced" class="field-expander">
+                  <summary>Advanced lodging filters</summary>
+                  <div class="field-expander-body">
+                    <label>
+                      Minimum bedrooms (optional)
+                      <input name="min_bedrooms" type="number" min="1" step="1" placeholder="3" />
+                    </label>
+                    <label>
+                      Max walk minutes to lift (optional)
+                      <input name="max_walk_minutes" type="number" min="1" step="1" placeholder="10" />
+                    </label>
+                    <p class="field-subheading">Amenities</p>
+                    <div class="check-grid">
+                      <label><input name="hot_tub_required" type="checkbox" /> Hot tub</label>
+                      <label><input name="kitchen_required" type="checkbox" /> Kitchen</label>
+                      <label><input name="laundry_required" type="checkbox" /> Laundry</label>
+                    </div>
+                  </div>
+                </details>
               </section>
 
               <section class="field-card">
                 <h2>Gear rental</h2>
                 <label>
                   Rental gear needed?
-                  <select name="rental_required">
+                  <select id="rental-required" name="rental_required">
                     <option value="" selected>Select rental need...</option>
                     <option value="unknown">Not sure</option>
                     <option value="yes">Yes</option>
                     <option value="no">No</option>
                   </select>
                 </label>
-                <label>
+                <label id="rental-count-field" hidden>
                   Rental count (optional)
                   <input name="rental_count" type="number" min="1" step="1" placeholder="2" />
                 </label>
-                <label>
+                <label id="rental-type-field" hidden>
                   Rental type
                   <select name="rental_type">
                     <option value="" selected>Select rental type...</option>
@@ -169,13 +182,20 @@
                     <option value="snowboarders">Snowboarders</option>
                   </select>
                 </label>
+                <p id="rental-hint" class="inline-hint" hidden></p>
               </section>
             </div>
           </div>
 
           <div class="form-footer">
             <p id="intake-error" class="error-text" role="alert" hidden></p>
-            <button id="generate-itineraries-btn" type="submit" class="primary-btn">Generate with ChatGPT 5.2</button>
+            <div class="form-submit-row">
+              <div class="footer-progress-card" aria-live="polite">
+                <p class="footer-progress-label">Progress</p>
+                <p id="footer-progress-value" class="footer-progress-value">0 / 6 sections complete</p>
+              </div>
+              <button id="generate-itineraries-btn" type="submit" class="primary-btn">Generate with ChatGPT 5.2</button>
+            </div>
           </div>
         </form>
       </section>
@@ -184,4 +204,3 @@
     <script type="module" src="/app.js"></script>
   </body>
   </html>
-

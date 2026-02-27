@@ -10,7 +10,7 @@ const projectRoot = path.join(__dirname, "..");
 const baseUrl = "http://localhost:5001";
 const artifactRoot = path.join(projectRoot, "tmp", "regression-artifacts");
 
-const scenarios = [
+const baseScenarios = [
   {
     id: "utah-ikon-8",
     title: "Utah Ikon hybrid group",
@@ -67,6 +67,66 @@ const scenarios = [
   }
 ];
 
+const expandedScenarios = [
+  {
+    id: "open-suggestions-explicit-pass",
+    title: "Open destination with explicit pass split",
+    form: {
+      start_date: "2026-02-20",
+      end_date: "2026-02-24",
+      destination_preference: "",
+      open_to_suggestions: true,
+      group_size: "10",
+      group_rider_mix: "hybrid",
+      skill_levels: ["beginner", "intermediate", "advanced"],
+      travel_mode: "mixed_driver_required",
+      max_drive_hours: "",
+      budget_per_person: "1200",
+      pass_preset: "explicit_breakdown",
+      pass_breakdown: "6 Ikon, 2 Epic, 2 no pass",
+      lodging_style_preference: "shared_house",
+      min_bedrooms: "5",
+      max_walk_minutes: "10",
+      hot_tub_required: true,
+      kitchen_required: true,
+      laundry_required: true,
+      rental_required: "yes",
+      rental_count: "5",
+      rental_type: "both"
+    }
+  },
+  {
+    id: "colorado-epic-no-rental",
+    title: "Colorado Epic pass with no rentals",
+    form: {
+      start_date: "2026-01-15",
+      end_date: "2026-01-18",
+      destination_preference: "Colorado",
+      open_to_suggestions: false,
+      group_size: "6",
+      group_rider_mix: "skiers",
+      skill_levels: ["intermediate", "advanced", "expert"],
+      travel_mode: "flexible",
+      max_drive_hours: "8",
+      budget_per_person: "1800",
+      pass_preset: "epic",
+      pass_breakdown: "",
+      lodging_style_preference: "separate_rooms",
+      min_bedrooms: "3",
+      max_walk_minutes: "12",
+      hot_tub_required: false,
+      kitchen_required: false,
+      laundry_required: true,
+      rental_required: "no",
+      rental_count: "",
+      rental_type: ""
+    }
+  }
+];
+
+const suite = String(process.env.REGRESSION_SUITE || "core").toLowerCase() === "expanded" ? "expanded" : "core";
+const scenarios = suite === "expanded" ? [...baseScenarios, ...expandedScenarios] : baseScenarios;
+
 let server = null;
 let startedServer = false;
 
@@ -101,7 +161,7 @@ try {
 
   await browser.close();
   fs.writeFileSync(path.join(runDir, "summary.json"), JSON.stringify(summary, null, 2));
-  console.log(JSON.stringify({ runDir, summary }, null, 2));
+  console.log(JSON.stringify({ suite, scenarioCount: scenarios.length, runDir, summary }, null, 2));
 } catch (error) {
   const msg = error instanceof Error ? error.message : String(error);
   console.error(msg);
@@ -202,7 +262,9 @@ async function fillScenario(page, f) {
   }
 
   if (f.travel_mode) await page.selectOption('select[name="travel_mode"]', f.travel_mode);
-  await page.fill('input[name="max_drive_hours"]', f.max_drive_hours || "");
+  if (f.travel_mode === "drive_only" || f.travel_mode === "mixed_driver_required") {
+    await page.fill('input[name="max_drive_hours"]', f.max_drive_hours || "");
+  }
 
   await page.fill('input[name="budget_per_person"]', f.budget_per_person);
   if (f.pass_preset) await page.selectOption('select[name="pass_preset"]', f.pass_preset);
@@ -213,6 +275,12 @@ async function fillScenario(page, f) {
   if (f.lodging_style_preference) {
     await page.selectOption('select[name="lodging_style_preference"]', f.lodging_style_preference);
   }
+  await page.evaluate(() => {
+    const details = document.querySelector("#lodging-advanced");
+    if (details && !details.hasAttribute("open")) {
+      details.setAttribute("open", "");
+    }
+  });
   await page.fill('input[name="min_bedrooms"]', f.min_bedrooms || "");
   await page.fill('input[name="max_walk_minutes"]', f.max_walk_minutes || "");
 
@@ -221,8 +289,10 @@ async function fillScenario(page, f) {
   await setCheckbox(page, 'input[name="laundry_required"]', !!f.laundry_required);
 
   if (f.rental_required) await page.selectOption('select[name="rental_required"]', f.rental_required);
-  await page.fill('input[name="rental_count"]', f.rental_count || "");
-  if (f.rental_type) await page.selectOption('select[name="rental_type"]', f.rental_type);
+  if (f.rental_required === "yes") {
+    await page.fill('input[name="rental_count"]', f.rental_count || "");
+    if (f.rental_type) await page.selectOption('select[name="rental_type"]', f.rental_type);
+  }
 }
 
 async function setCheckbox(page, selector, checked) {
@@ -289,4 +359,3 @@ async function startServer() {
   child.kill("SIGTERM");
   throw new Error(`Timed out waiting for dev server.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
 }
-

@@ -130,45 +130,47 @@ function validateTripIntake(value: unknown): TripIntakePayload {
 }
 
 export function composePrompt(details: TripIntakePayload): string {
-  const lines: string[] = [];
-  lines.push("i am planning a ski trip for a group, here are the details:");
-  lines.push("");
-  lines.push(`- ${formatDateRange(details.startDate, details.endDate)}`);
-  lines.push(`- total of ${details.groupSize} people`);
+  const destination = details.destinationPreference || (details.openToSuggestions ? "open_to_suggestions" : "unspecified");
+  const amenities = [
+    details.hotTubRequired ? "hot_tub" : "",
+    details.kitchenRequired ? "kitchen" : "",
+    details.laundryRequired ? "laundry" : ""
+  ]
+    .filter(Boolean)
+    .join(",");
 
-  if (details.destinationPreference) {
-    lines.push(`- a resort in ${details.destinationPreference}`);
-  } else if (details.openToSuggestions) {
-    lines.push("- we are open to destination suggestions");
-  }
+  const constraints: Array<[string, string]> = [
+    ["dates", `${details.startDate} to ${details.endDate}`],
+    ["group", String(details.groupSize)],
+    ["destination", destination],
+    ["mix", details.groupRiderMix || "unspecified"],
+    ["skills", details.skillLevels.join(",")],
+    ["budget_pp_usd_max", String(Math.round(details.budgetPerPerson))],
+    ["pass", details.passPreset || "unspecified"],
+    ["pass_breakdown", details.passBreakdown || "none"],
+    ["travel", details.travelMode || "unspecified"],
+    ["drive_hours", details.maxDriveHours == null ? "none" : String(details.maxDriveHours)],
+    ["lodging", details.lodgingStylePreference || "unspecified"],
+    ["bedrooms", details.minBedrooms == null ? "none" : String(details.minBedrooms)],
+    ["walk_minutes", details.maxWalkMinutes == null ? "none" : String(details.maxWalkMinutes)],
+    ["amenities", amenities || "none"],
+    ["rental", details.rentalRequired || "unspecified"],
+    ["rental_count", details.rentalCount == null ? "none" : String(details.rentalCount)],
+    ["rental_type", details.rentalType || "unspecified"]
+  ];
 
-  const passLine = describePasses(details);
-  if (passLine) lines.push(`- ${passLine}`);
-
-  const riderMixLine = describeRiderMix(details.groupRiderMix);
-  if (riderMixLine) lines.push(`- ${riderMixLine}`);
-
-  const rentalLine = describeGearRental(details);
-  if (rentalLine) lines.push(`- ${rentalLine}`);
-
-  const lodgingLine = describeLodging(details);
-  if (lodgingLine) lines.push(`- ${lodgingLine}`);
-
-  const travelLine = describeTravel(details);
-  if (travelLine) lines.push(`- ${travelLine}`);
-
-  const amenityLine = describeAmenities(details);
-  if (amenityLine) lines.push(`- ${amenityLine}`);
-
-  lines.push(`- we're ${formatSkillLevels(details.skillLevels)} in skill level`);
-  lines.push(`- we don't want to spend more than $${Math.round(details.budgetPerPerson)} per person for everything all included`);
-
-  lines.push("");
-  lines.push(
-    "can you produce a few candidate itineraries for this group? please include links to the housing, car rental, and gear shop. format the answer as exactly three sections titled 'Itinerary A', 'Itinerary B', and 'Itinerary C', and for each itinerary include: Why this works, Home, Ski/Ride plan, Parking/reservations, Gear rental, Car rental, and Budget note."
-  );
-
-  return lines.join("\n");
+  return [
+    "Plan 3 ski-trip itineraries.",
+    `Constraints: ${constraints.map(([k, v]) => `${k} ${v}`).join("; ")}.`,
+    "Treat every key as a constraint. New keys may appear; treat them the same way.",
+    "Output exactly three headings in this format: Itinerary A - <short descriptive name>, Itinerary B - <short descriptive name>, Itinerary C - <short descriptive name>.",
+    "Under each heading use labels in this order: Why this works:, Budget snapshot:, Stay + mountain access:, Ski/Ride plan:, Transport + reservations:, Gear rental:, Watchouts:.",
+    "Transport + reservations must combine parking and vehicle plan in one section.",
+    "If rentals are not needed, write Gear rental: Not needed for this group.",
+    "If there are no material risks, write Watchouts: None worth flagging.",
+    "Include at least one URL in Stay + mountain access, Transport + reservations, and Gear rental (unless rentals are not needed).",
+    "Keep each itinerary concise, use short bullets when useful, no tables, and no intro/outro."
+  ].join("\n");
 }
 
 async function requestChatGpt(prompt: string): Promise<{ text: string; model: string }> {

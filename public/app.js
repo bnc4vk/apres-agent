@@ -6,8 +6,25 @@ const passBreakdownField = document.getElementById("pass-breakdown-field");
 const dateRangePicker = document.getElementById("trip-date-range-picker");
 const startDateField = document.getElementById("trip-start-date");
 const endDateField = document.getElementById("trip-end-date");
+const openToSuggestionsField = document.getElementById("open-to-suggestions");
+const destinationPreferenceField = document.getElementById("destination-preference");
+const travelModeField = document.getElementById("travel-mode");
+const maxDriveHoursField = document.getElementById("max-drive-hours-field");
+const maxDriveHoursInput = document.getElementById("max-drive-hours");
+const rentalRequiredField = document.getElementById("rental-required");
+const rentalCountField = document.getElementById("rental-count-field");
+const rentalTypeField = document.getElementById("rental-type-field");
+const lodgingAdvancedField = document.getElementById("lodging-advanced");
+const dateRangeHint = document.getElementById("date-range-hint");
+const destinationHint = document.getElementById("destination-hint");
+const skillsHint = document.getElementById("skills-hint");
+const travelHint = document.getElementById("travel-hint");
+const rentalHint = document.getElementById("rental-hint");
+const intakeProgressValue = document.getElementById("intake-progress-value");
+const footerProgressValue = document.getElementById("footer-progress-value");
 
 let datePickerMonthCursor = null;
+let isBusy = false;
 
 const DATE_PICKER_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const DATE_PICKER_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -18,13 +35,23 @@ function init() {
   if (!intakeForm) return;
 
   intakeForm.addEventListener("submit", onSubmit);
+  intakeForm.addEventListener("input", onFormChange);
+  intakeForm.addEventListener("change", onFormChange);
   passPresetField?.addEventListener("change", syncPassBreakdownField);
   startDateField?.addEventListener("change", () => syncDateRangePicker(true));
   endDateField?.addEventListener("change", () => syncDateRangePicker(true));
   dateRangePicker?.addEventListener("click", onDateRangePickerClick);
 
-  syncPassBreakdownField();
+  syncConditionalFields();
+  syncInlineHints();
+  syncCompletionStatus();
   syncDateRangePicker();
+}
+
+function onFormChange() {
+  syncConditionalFields();
+  syncInlineHints();
+  syncCompletionStatus();
 }
 
 async function onSubmit(event) {
@@ -69,8 +96,13 @@ function buildPayload() {
     .filter(Boolean);
   const openToSuggestions = fd.get("open_to_suggestions") === "on";
   const destinationPreference = stringValue(fd.get("destination_preference"));
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
 
   if (!startDate || !endDate) return { ok: false, error: "Start and end dates are required." };
+  if (!start || !end || compareCalendarDates(end, start) < 0) {
+    return { ok: false, error: "End date must be on or after start date." };
+  }
   if (!groupSize || groupSize < 1) return { ok: false, error: "Group size must be at least 1." };
   if (!budgetPerPerson || budgetPerPerson < 1) return { ok: false, error: "Per-person budget is required." };
   if (skillLevels.length === 0) return { ok: false, error: "Select at least one skill level." };
@@ -114,9 +146,15 @@ function buildPayload() {
 
 function setBusy(busy) {
   if (!intakeForm || !generateBtn) return;
+  isBusy = busy;
   intakeForm.querySelectorAll("input, select, textarea, button").forEach((el) => {
     el.disabled = busy;
   });
+  if (!busy) {
+    syncConditionalFields();
+    syncInlineHints();
+    syncCompletionStatus();
+  }
   generateBtn.textContent = busy ? "Generating..." : "Generate with ChatGPT 5.2";
 }
 
@@ -146,10 +184,133 @@ function optionalInt(value) {
 function syncPassBreakdownField() {
   if (!passPresetField || !passBreakdownField) return;
   const show = passPresetField.value === "explicit_breakdown";
-  passBreakdownField.hidden = !show;
-  passBreakdownField.querySelectorAll("textarea, input").forEach((el) => {
-    el.disabled = !show;
+  setFieldVisibility(passBreakdownField, show, { clearOnHide: true });
+}
+
+function syncConditionalFields() {
+  syncPassBreakdownField();
+  syncTravelDriveField();
+  syncRentalFields();
+  syncLodgingAdvancedState();
+}
+
+function syncTravelDriveField() {
+  if (!travelModeField || !maxDriveHoursField) return;
+  const show = travelModeField.value === "drive_only" || travelModeField.value === "mixed_driver_required";
+  setFieldVisibility(maxDriveHoursField, show, { clearOnHide: true });
+}
+
+function syncRentalFields() {
+  if (!rentalRequiredField) return;
+  const showDetails = rentalRequiredField.value === "yes";
+  setFieldVisibility(rentalCountField, showDetails, { clearOnHide: true });
+  setFieldVisibility(rentalTypeField, showDetails, { clearOnHide: true });
+}
+
+function syncLodgingAdvancedState() {
+  if (!lodgingAdvancedField) return;
+  const fields = Array.from(lodgingAdvancedField.querySelectorAll("input"));
+  const hasValues = fields.some((el) => {
+    if (el.type === "checkbox") return el.checked;
+    return Boolean(String(el.value || "").trim());
   });
+  if (hasValues) lodgingAdvancedField.open = true;
+}
+
+function setFieldVisibility(container, visible, options = {}) {
+  if (!container) return;
+  const clearOnHide = options.clearOnHide === true;
+  container.hidden = !visible;
+
+  container.querySelectorAll("input, select, textarea").forEach((el) => {
+    if (!visible && clearOnHide) {
+      if (el.type === "checkbox") el.checked = false;
+      else el.value = "";
+    }
+    el.disabled = !visible || isBusy;
+  });
+}
+
+function syncInlineHints() {
+  const start = parseIsoDate(startDateField?.value || "");
+  const end = parseIsoDate(endDateField?.value || "");
+  if (start && end && compareCalendarDates(end, start) < 0) {
+    setInlineHint(dateRangeHint, "End date should be the same day or later than start date.", true);
+  } else {
+    setInlineHint(dateRangeHint, "");
+  }
+
+  const openToSuggestions = openToSuggestionsField?.checked === true;
+  const destination = stringValue(destinationPreferenceField?.value || "");
+  if (!openToSuggestions && !destination) {
+    setInlineHint(destinationHint, "Add a destination or enable destination suggestions.", true);
+  } else {
+    setInlineHint(destinationHint, "");
+  }
+
+  const selectedSkills = intakeForm
+    ? intakeForm.querySelectorAll("input[name='skill_levels']:checked").length
+    : 0;
+  if (selectedSkills === 0) {
+    setInlineHint(skillsHint, "Select at least one skill level.", true);
+  } else {
+    setInlineHint(skillsHint, "");
+  }
+
+  const requiresDriveHours =
+    travelModeField?.value === "drive_only" || travelModeField?.value === "mixed_driver_required";
+  if (requiresDriveHours && !stringValue(maxDriveHoursInput?.value || "")) {
+    setInlineHint(travelHint, "Add max drive hours to keep trip options realistic.");
+  } else {
+    setInlineHint(travelHint, "");
+  }
+
+  const rentalMode = rentalRequiredField?.value || "";
+  if (rentalMode === "yes") {
+    const rentalCount = intakeForm?.querySelector('input[name="rental_count"]');
+    const rentalType = intakeForm?.querySelector('select[name="rental_type"]');
+    const missingCount = !stringValue(rentalCount?.value || "");
+    const missingType = !stringValue(rentalType?.value || "");
+    if (missingCount || missingType) {
+      setInlineHint(rentalHint, "Add rental count and type for better pricing accuracy.");
+    } else {
+      setInlineHint(rentalHint, "");
+    }
+  } else {
+    setInlineHint(rentalHint, "");
+  }
+}
+
+function setInlineHint(node, text, isWarning = false) {
+  if (!node) return;
+  const message = String(text || "").trim();
+  node.textContent = message;
+  node.hidden = !message;
+  node.classList.toggle("warning", isWarning && !!message);
+}
+
+function syncCompletionStatus() {
+  const total = 6;
+  const completed = countCompletedSections();
+  const text = `${completed} / ${total} sections complete`;
+  if (intakeProgressValue) intakeProgressValue.textContent = text;
+  if (footerProgressValue) footerProgressValue.textContent = text;
+}
+
+function countCompletedSections() {
+  if (!intakeForm) return 0;
+  const fd = new FormData(intakeForm);
+
+  const datesReady = Boolean(stringValue(fd.get("start_date")) && stringValue(fd.get("end_date")));
+  const destinationReady = fd.get("open_to_suggestions") === "on" || Boolean(stringValue(fd.get("destination_preference")));
+  const groupReady = Boolean(optionalInt(fd.get("group_size"))) && intakeForm.querySelectorAll("input[name='skill_levels']:checked").length > 0;
+  const travelMode = stringValue(fd.get("travel_mode"));
+  const travelReady = Boolean(travelMode);
+  const budgetReady = Boolean(optionalInt(fd.get("budget_per_person")));
+  const lodgingReady = Boolean(stringValue(fd.get("lodging_style_preference")));
+  const rentalReady = Boolean(stringValue(fd.get("rental_required")));
+
+  return [datesReady && destinationReady, groupReady, travelReady, budgetReady, lodgingReady, rentalReady].filter(Boolean).length;
 }
 
 function onDateRangePickerClick(event) {

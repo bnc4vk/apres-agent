@@ -10,7 +10,9 @@
     "lint": "tsc --noEmit",
     "test:unit": "tsx --test test/unit/**/*.test.ts",
     "test": "npm run test:unit",
-    "test:regression": "node test/regression.chromium.mjs"
+    "test:regression": "node test/regression.chromium.mjs",
+    "test:regression:expanded": "REGRESSION_SUITE=expanded node test/regression.chromium.mjs",
+    "test:prompt-benchmark": "tsx test/prompt-benchmark.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
