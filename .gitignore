@@ -10,6 +10,7 @@ dist/
 # Local scratch / automation artifacts
 .codex-artifacts/
 tmp/
+test-artifacts/
 *.log
 
 # OS files

@@ -4,7 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 
-type TripIntakePayload = {
+export type TripIntakePayload = {
   startDate: string;
   endDate: string;
   destinationPreference?: string;
@@ -129,7 +129,7 @@ function validateTripIntake(value: unknown): TripIntakePayload {
   };
 }
 
-function composePrompt(details: TripIntakePayload): string {
+export function composePrompt(details: TripIntakePayload): string {
   const lines: string[] = [];
   lines.push("i am planning a ski trip for a group, here are the details:");
   lines.push("");
@@ -165,7 +165,7 @@ function composePrompt(details: TripIntakePayload): string {
 
   lines.push("");
   lines.push(
-    "can you produce a few candidate itineraries for this group? please include links to the housing, car rental, and gear shop."
+    "can you produce a few candidate itineraries for this group? please include links to the housing, car rental, and gear shop. format the answer as exactly three sections titled 'Itinerary A', 'Itinerary B', and 'Itinerary C', and for each itinerary include: Why this works, Home, Ski/Ride plan, Parking/reservations, Gear rental, Car rental, and Budget note."
   );
 
   return lines.join("\n");

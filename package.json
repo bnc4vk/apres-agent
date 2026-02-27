@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "lint": "tsc --noEmit",
+    "test:unit": "tsx --test test/unit/**/*.test.ts",
+    "test": "npm run test:unit",
+    "test:regression": "node test/regression.chromium.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -15,6 +19,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.10",
+    "playwright": "^1.58.1",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
