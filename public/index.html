@@ -82,19 +82,15 @@
 
               <section class="field-card">
                 <h2>Travel</h2>
-                <label>
-                  Travel mode
-                  <select id="travel-mode" name="travel_mode">
-                    <option value="" selected>Select travel mode...</option>
-                    <option value="flexible">Can fly or drive</option>
-                    <option value="drive_only">Drive only</option>
-                    <option value="mixed_driver_required">Some can fly, but at least 1 must drive</option>
-                  </select>
-                </label>
-                <label id="max-drive-hours-field" hidden>
-                  Max drive hours (optional)
-                  <input id="max-drive-hours" name="max_drive_hours" type="number" min="1" max="24" step="1" placeholder="6" />
-                </label>
+                <div id="traveler-departures-field" class="departure-field">
+                  <div class="departure-field-header">
+                    <p class="field-subheading">Traveler departure locations</p>
+                    <button id="add-traveler-departure-btn" type="button" class="link-btn">+ Add departure</button>
+                  </div>
+                  <p class="field-helper">Add one row per departure group leaving from a specific city.</p>
+                  <div id="traveler-departure-rows" class="departure-rows"></div>
+                </div>
+                <p id="departure-hint" class="inline-hint" hidden></p>
                 <p id="travel-hint" class="inline-hint" hidden></p>
               </section>
             </div>
@@ -110,19 +106,10 @@
                   Pass ownership
                   <select name="pass_preset" id="pass-preset">
                     <option value="" selected>Select pass ownership...</option>
-                    <option value="none">No passes</option>
-                    <option value="ikon">Mostly Ikon</option>
-                    <option value="epic">Mostly Epic</option>
-                    <option value="explicit_breakdown">Explicit breakdown</option>
+                    <option value="none">None</option>
+                    <option value="epic">Epic</option>
+                    <option value="ikon">Ikon</option>
                   </select>
-                </label>
-                <label id="pass-breakdown-field" hidden>
-                  Pass breakdown
-                  <textarea
-                    name="pass_breakdown"
-                    rows="3"
-                    placeholder="Example: 2 Ikon, 1 Epic, 3 no pass"
-                  ></textarea>
                 </label>
               </section>
 
@@ -130,9 +117,8 @@
                 <h2>Lodging</h2>
                 <label>
                   Shared lodging style
-                  <select name="lodging_style_preference">
+                  <select id="lodging-style" name="lodging_style_preference">
                     <option value="" selected>Select lodging style...</option>
-                    <option value="flexible">Flexible / mixed</option>
                     <option value="shared_house">Large shared house</option>
                     <option value="separate_rooms">Separate rooms in a lodge/hotel</option>
                   </select>
@@ -140,7 +126,7 @@
                 <details id="lodging-advanced" class="field-expander">
                   <summary>Advanced lodging filters</summary>
                   <div class="field-expander-body">
-                    <label>
+                    <label id="min-bedrooms-field">
                       Minimum bedrooms (optional)
                       <input name="min_bedrooms" type="number" min="1" step="1" placeholder="3" />
                     </label>
@@ -202,5 +188,25 @@
     </main>
 
     <script type="module" src="/app.js"></script>
+
+    <template id="traveler-departure-row-template">
+      <div class="departure-row">
+        <div class="departure-row-top">
+          <p class="departure-group-label">First departure city</p>
+          <button type="button" class="link-btn danger remove-traveler-departure-btn" hidden>Remove</button>
+        </div>
+        <label class="departure-city-field">
+          <input class="departure-city" type="text" placeholder="San Francisco, CA" aria-label="Departure city" />
+        </label>
+        <label class="checkbox-line departure-driving-line">
+          <input class="departure-driving" type="checkbox" />
+          Mark this departure as driving
+        </label>
+        <label class="departure-max-drive-hours-field" hidden>
+          Max drive hours (optional)
+          <input class="departure-max-drive-hours" type="number" min="1" max="24" step="1" placeholder="6" />
+        </label>
+      </div>
+    </template>
   </body>
-  </html>
+</html>

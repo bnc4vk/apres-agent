@@ -216,6 +216,70 @@ body {
   font-weight: 700;
 }
 
+.departure-field {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(90, 132, 165, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 252, 255, 0.88);
+  padding: 9px;
+}
+
+.departure-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.departure-field-header .field-subheading {
+  margin: 0;
+}
+
+.departure-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.departure-row {
+  border: 1px solid rgba(90, 132, 165, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.departure-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.departure-group-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #355871;
+  font-weight: 600;
+}
+
+.departure-city-field {
+  gap: 4px;
+}
+
+.departure-city-label {
+  color: #4c6a80;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.remove-traveler-departure-btn {
+  margin-left: auto;
+  font-size: 0.72rem;
+}
+
 .manual-date-fields {
   display: grid;
   gap: 8px;
@@ -340,6 +404,26 @@ body {
 .primary-btn[disabled] {
   cursor: progress;
   opacity: 0.7;
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  color: #2a7eb5;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link-btn.danger {
+  color: var(--danger);
 }
 
 .error-text,
@@ -917,6 +1001,10 @@ body {
   .form-submit-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .departure-row {
+    grid-template-columns: 1fr;
   }
 
   .footer-progress-card {

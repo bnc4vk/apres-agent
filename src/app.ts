@@ -17,6 +17,7 @@ export type TripIntakePayload = {
   passBreakdown?: string;
   travelMode?: string;
   maxDriveHours?: number | null;
+  travelerDepartures?: TravelerDeparture[];
   lodgingStylePreference?: string;
   minBedrooms?: number | null;
   maxWalkMinutes?: number | null;
@@ -26,6 +27,13 @@ export type TripIntakePayload = {
   rentalRequired?: string;
   rentalCount?: number | null;
   rentalType?: string;
+};
+
+export type TravelerDeparture = {
+  traveler?: string;
+  city: string;
+  isDriving?: boolean;
+  maxDriveHours?: number | null;
 };
 
 type StoredResult = {
@@ -97,12 +105,17 @@ function validateTripIntake(value: unknown): TripIntakePayload {
   const groupSize = numberField(body.groupSize);
   const budgetPerPerson = numberField(body.budgetPerPerson);
   const skillLevels = arrayOfStrings(body.skillLevels);
+  const travelerDepartures = arrayOfTravelerDepartures(body.travelerDepartures);
+  const travelMode = optionalString(body.travelMode);
 
   if (!startDate || !endDate) throw new Error("Start date and end date are required.");
   if (!isIsoDate(startDate) || !isIsoDate(endDate)) throw new Error("Dates must be valid YYYY-MM-DD values.");
   if (groupSize < 1) throw new Error("Group size must be at least 1.");
   if (budgetPerPerson < 1) throw new Error("Budget per person must be at least 1.");
   if (skillLevels.length === 0) throw new Error("Select at least one skill level.");
+  if (travelMode === "mixed_driver_required" && travelerDepartures.length > 0 && !travelerDepartures.some((entry) => entry.isDriving)) {
+    throw new Error("At least one traveler departure must be marked as driving for mixed travel mode.");
+  }
 
   return {
     startDate,
@@ -115,8 +128,9 @@ function validateTripIntake(value: unknown): TripIntakePayload {
     budgetPerPerson,
     passPreset: optionalString(body.passPreset),
     passBreakdown: optionalString(body.passBreakdown),
-    travelMode: optionalString(body.travelMode),
+    travelMode,
     maxDriveHours: optionalNumber(body.maxDriveHours),
+    travelerDepartures,
     lodgingStylePreference: optionalString(body.lodgingStylePreference),
     minBedrooms: optionalNumber(body.minBedrooms),
     maxWalkMinutes: optionalNumber(body.maxWalkMinutes),
@@ -143,13 +157,13 @@ export function composePrompt(details: TripIntakePayload): string {
     ["dates", `${details.startDate} to ${details.endDate}`],
     ["group", String(details.groupSize)],
     ["destination", destination],
-    ["mix", details.groupRiderMix || "unspecified"],
+    ["mix", normalizeRiderMix(details.groupRiderMix)],
     ["skills", details.skillLevels.join(",")],
     ["budget_pp_usd_max", String(Math.round(details.budgetPerPerson))],
     ["pass", details.passPreset || "unspecified"],
-    ["pass_breakdown", details.passBreakdown || "none"],
     ["travel", details.travelMode || "unspecified"],
     ["drive_hours", details.maxDriveHours == null ? "none" : String(details.maxDriveHours)],
+    ["traveler_departures", encodeTravelerDepartures(details.travelerDepartures, details.travelMode)],
     ["lodging", details.lodgingStylePreference || "unspecified"],
     ["bedrooms", details.minBedrooms == null ? "none" : String(details.minBedrooms)],
     ["walk_minutes", details.maxWalkMinutes == null ? "none" : String(details.maxWalkMinutes)],
@@ -166,6 +180,9 @@ export function composePrompt(details: TripIntakePayload): string {
     "Output exactly three headings in this format: Itinerary A - <short descriptive name>, Itinerary B - <short descriptive name>, Itinerary C - <short descriptive name>.",
     "Under each heading use labels in this order: Why this works:, Budget snapshot:, Stay + mountain access:, Ski/Ride plan:, Transport + reservations:, Gear rental:, Watchouts:.",
     "Transport + reservations must combine parking and vehicle plan in one section.",
+    "In Transport + reservations, include flight details for all relevant flying routes (departure airport, arrival airport, and at least one booking or airline URL).",
+    "If traveler_departures is provided, treat each departure mode as a hard constraint: drive_required groups must drive (never fly) and fly_required groups must fly (do not convert to drive plans).",
+    "For every drive_required departure, enforce its max_drive_hours when provided.",
     "If rentals are not needed, write Gear rental: Not needed for this group.",
     "If there are no material risks, write Watchouts: None worth flagging.",
     "Include at least one URL in Stay + mountain access, Transport + reservations, and Gear rental (unless rentals are not needed).",
@@ -268,6 +285,63 @@ function arrayOfStrings(value: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function arrayOfTravelerDepartures(value: unknown): TravelerDeparture[] {
+  if (!Array.isArray(value)) return [];
+  const departures: TravelerDeparture[] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    const traveler = optionalString(entry.traveler);
+    const city = stringField(entry.city);
+    if (!city) continue;
+    const isDriving = typeof entry.isDriving === "boolean" ? entry.isDriving : undefined;
+    const maxDriveHours = optionalNumber(entry.maxDriveHours);
+    departures.push({
+      traveler,
+      city,
+      ...(isDriving == null ? {} : { isDriving }),
+      ...(maxDriveHours == null ? {} : { maxDriveHours })
+    });
+  }
+
+  return departures;
+}
+
+function encodeTravelerDepartures(departures: TravelerDeparture[] | undefined, travelMode?: string): string {
+  if (!departures || departures.length === 0) return "none";
+  return departures
+    .map((departure, index) => {
+      const traveler = scrubConstraintValue(departure.traveler || `group_${index + 1}`);
+      const city = scrubConstraintValue(departure.city);
+      const mode = departureModeLabel(departure, travelMode);
+      const driveHours = mode === "drive_required" && departure.maxDriveHours != null ? ` max_drive_hours ${departure.maxDriveHours}` : "";
+      return `${traveler} from ${city} mode ${mode}${driveHours}`;
+    })
+    .join(" | ");
+}
+
+function departureModeLabel(departure: TravelerDeparture, travelMode?: string): string {
+  if (travelMode === "drive_only") return "drive_required";
+  if (travelMode === "mixed_driver_required" || travelMode === "flexible") {
+    return departure.isDriving ? "drive_required" : "fly_required";
+  }
+  if (departure.isDriving === true) return "drive_required";
+  if (departure.isDriving === false) return "fly_required";
+  return "unspecified";
+}
+
+function normalizeRiderMix(value?: string): string {
+  if (value === "hybrid") return "skiers_and_snowboarders";
+  if (value === "skiers") return "skiers_only";
+  if (value === "snowboarders") return "snowboarders_only";
+  return "unspecified";
+}
+
+function scrubConstraintValue(value: string): string {
+  return value.replace(/[\n\r;]+/g, ", ").replace(/\s+/g, " ").trim();
 }
 
 function isIsoDate(value: string): boolean {

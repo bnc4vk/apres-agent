@@ -16,6 +16,10 @@ function makePayload(overrides: Partial<TripIntakePayload> = {}): TripIntakePayl
     passBreakdown: "",
     travelMode: "flexible",
     maxDriveHours: null,
+    travelerDepartures: [
+      { traveler: "Alex + Sam", city: "San Francisco, CA", isDriving: true },
+      { traveler: "Priya", city: "New York, NY", isDriving: false }
+    ],
     lodgingStylePreference: "shared_house",
     minBedrooms: 4,
     maxWalkMinutes: 15,
@@ -54,6 +58,14 @@ test("composePrompt includes structured trip details and extensibility guidance"
   assert.match(prompt, /Constraints:/i);
   assert.match(prompt, /dates\s+2026-03-13 to 2026-03-15/i);
   assert.match(prompt, /group\s+8/i);
+  assert.match(prompt, /mix\s+skiers_and_snowboarders/i);
   assert.match(prompt, /budget_pp_usd_max\s+1500/i);
+  assert.match(prompt, /traveler_departures\s+alex \+ sam from san francisco, ca mode drive_required/i);
   assert.match(prompt, /New keys may appear/i);
+});
+
+test("composePrompt asks for flight details and full route coverage", () => {
+  const prompt = composePrompt(makePayload());
+  assert.match(prompt, /include flight details for all relevant flying routes/i);
+  assert.match(prompt, /drive_required groups must drive \(never fly\)/i);
 });

@@ -1,16 +1,16 @@
 const intakeForm = document.getElementById("trip-intake-form");
 const intakeError = document.getElementById("intake-error");
 const generateBtn = document.getElementById("generate-itineraries-btn");
-const passPresetField = document.getElementById("pass-preset");
-const passBreakdownField = document.getElementById("pass-breakdown-field");
 const dateRangePicker = document.getElementById("trip-date-range-picker");
 const startDateField = document.getElementById("trip-start-date");
 const endDateField = document.getElementById("trip-end-date");
 const openToSuggestionsField = document.getElementById("open-to-suggestions");
 const destinationPreferenceField = document.getElementById("destination-preference");
-const travelModeField = document.getElementById("travel-mode");
-const maxDriveHoursField = document.getElementById("max-drive-hours-field");
-const maxDriveHoursInput = document.getElementById("max-drive-hours");
+const addTravelerDepartureBtn = document.getElementById("add-traveler-departure-btn");
+const travelerDepartureRows = document.getElementById("traveler-departure-rows");
+const travelerDepartureTemplate = document.getElementById("traveler-departure-row-template");
+const lodgingStyleField = document.getElementById("lodging-style");
+const minBedroomsField = document.getElementById("min-bedrooms-field");
 const rentalRequiredField = document.getElementById("rental-required");
 const rentalCountField = document.getElementById("rental-count-field");
 const rentalTypeField = document.getElementById("rental-type-field");
@@ -18,6 +18,7 @@ const lodgingAdvancedField = document.getElementById("lodging-advanced");
 const dateRangeHint = document.getElementById("date-range-hint");
 const destinationHint = document.getElementById("destination-hint");
 const skillsHint = document.getElementById("skills-hint");
+const departureHint = document.getElementById("departure-hint");
 const travelHint = document.getElementById("travel-hint");
 const rentalHint = document.getElementById("rental-hint");
 const intakeProgressValue = document.getElementById("intake-progress-value");
@@ -37,10 +38,19 @@ function init() {
   intakeForm.addEventListener("submit", onSubmit);
   intakeForm.addEventListener("input", onFormChange);
   intakeForm.addEventListener("change", onFormChange);
-  passPresetField?.addEventListener("change", syncPassBreakdownField);
+  lodgingStyleField?.addEventListener("change", syncLodgingBedroomField);
   startDateField?.addEventListener("change", () => syncDateRangePicker(true));
   endDateField?.addEventListener("change", () => syncDateRangePicker(true));
   dateRangePicker?.addEventListener("click", onDateRangePickerClick);
+  addTravelerDepartureBtn?.addEventListener("click", () => {
+    addTravelerDepartureRow();
+    onFormChange();
+  });
+  travelerDepartureRows?.addEventListener("click", onTravelerDepartureRowsClick);
+
+  if (travelerDepartureRows && travelerDepartureRows.children.length === 0) {
+    addTravelerDepartureRow();
+  }
 
   syncConditionalFields();
   syncInlineHints();
@@ -111,9 +121,12 @@ function buildPayload() {
   }
 
   const passPreset = stringValue(fd.get("pass_preset"));
-  const passBreakdown = stringValue(fd.get("pass_breakdown"));
-  if (passPreset === "explicit_breakdown" && !passBreakdown) {
-    return { ok: false, error: "Pass breakdown is required for explicit breakdown." };
+  const travelerDepartures = collectTravelerDepartures();
+  if (!travelerDepartures.ok) {
+    return { ok: false, error: travelerDepartures.error };
+  }
+  if (travelerDepartures.data.length === 0) {
+    return { ok: false, error: "Add at least one departure city." };
   }
 
   return {
@@ -128,9 +141,8 @@ function buildPayload() {
       skillLevels,
       budgetPerPerson,
       passPreset: passPreset || undefined,
-      passBreakdown: passBreakdown || undefined,
-      travelMode: stringValue(fd.get("travel_mode")) || undefined,
-      maxDriveHours: optionalInt(fd.get("max_drive_hours")),
+      maxDriveHours: deriveOverallMaxDriveHours(travelerDepartures.data),
+      travelerDepartures: travelerDepartures.data.length > 0 ? travelerDepartures.data : undefined,
       lodgingStylePreference: stringValue(fd.get("lodging_style_preference")) || undefined,
       minBedrooms: optionalInt(fd.get("min_bedrooms")),
       maxWalkMinutes: optionalInt(fd.get("max_walk_minutes")),
@@ -181,23 +193,34 @@ function optionalInt(value) {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 }
 
-function syncPassBreakdownField() {
-  if (!passPresetField || !passBreakdownField) return;
-  const show = passPresetField.value === "explicit_breakdown";
-  setFieldVisibility(passBreakdownField, show, { clearOnHide: true });
-}
-
 function syncConditionalFields() {
-  syncPassBreakdownField();
-  syncTravelDriveField();
+  syncDepartureDrivingFields();
+  syncLodgingBedroomField();
   syncRentalFields();
   syncLodgingAdvancedState();
 }
 
-function syncTravelDriveField() {
-  if (!travelModeField || !maxDriveHoursField) return;
-  const show = travelModeField.value === "drive_only" || travelModeField.value === "mixed_driver_required";
-  setFieldVisibility(maxDriveHoursField, show, { clearOnHide: true });
+function syncDepartureDrivingFields() {
+  if (!travelerDepartureRows) return;
+  travelerDepartureRows.querySelectorAll(".departure-row").forEach((row) => {
+    const drivingInput = row.querySelector(".departure-driving");
+    const maxDriveHoursField = row.querySelector(".departure-max-drive-hours-field");
+    const maxDriveHoursInput = row.querySelector(".departure-max-drive-hours");
+    const showMaxDriveField = drivingInput?.checked === true;
+
+    if (drivingInput) drivingInput.disabled = isBusy;
+    if (maxDriveHoursField) maxDriveHoursField.hidden = !showMaxDriveField;
+    if (maxDriveHoursInput) {
+      if (!showMaxDriveField) maxDriveHoursInput.value = "";
+      maxDriveHoursInput.disabled = !showMaxDriveField || isBusy;
+    }
+  });
+}
+
+function syncLodgingBedroomField() {
+  if (!lodgingStyleField || !minBedroomsField) return;
+  const show = lodgingStyleField.value === "shared_house";
+  setFieldVisibility(minBedroomsField, show, { clearOnHide: true });
 }
 
 function syncRentalFields() {
@@ -257,10 +280,18 @@ function syncInlineHints() {
     setInlineHint(skillsHint, "");
   }
 
-  const requiresDriveHours =
-    travelModeField?.value === "drive_only" || travelModeField?.value === "mixed_driver_required";
-  if (requiresDriveHours && !stringValue(maxDriveHoursInput?.value || "")) {
-    setInlineHint(travelHint, "Add max drive hours to keep trip options realistic.");
+  const departures = collectTravelerDepartures();
+  if (!departures.ok) {
+    setInlineHint(departureHint, departures.error, true);
+  } else if (departures.data.length === 0) {
+    setInlineHint(departureHint, "Add at least one departure city.", true);
+  } else {
+    setInlineHint(departureHint, "");
+  }
+  const hasDrivingDeparture = departures.ok && departures.data.some((entry) => entry.isDriving);
+  const missingDriveHours = departures.ok && departures.data.some((entry) => entry.isDriving && entry.maxDriveHours == null);
+  if (hasDrivingDeparture && missingDriveHours) {
+    setInlineHint(travelHint, "Optional: add max drive hours in each driving departure tile.");
   } else {
     setInlineHint(travelHint, "");
   }
@@ -289,6 +320,87 @@ function setInlineHint(node, text, isWarning = false) {
   node.classList.toggle("warning", isWarning && !!message);
 }
 
+function onTravelerDepartureRowsClick(event) {
+  const target = event.target instanceof HTMLElement ? event.target.closest("button") : null;
+  if (!target) return;
+  if (!target.classList.contains("remove-traveler-departure-btn")) return;
+
+  const row = target.closest(".departure-row");
+  if (!row) return;
+  if (travelerDepartureRows?.firstElementChild === row) return;
+  row.remove();
+  if (travelerDepartureRows && travelerDepartureRows.children.length === 0) {
+    addTravelerDepartureRow();
+  } else {
+    renumberTravelerDepartures();
+  }
+  onFormChange();
+}
+
+function addTravelerDepartureRow() {
+  if (!travelerDepartureRows || !(travelerDepartureTemplate instanceof HTMLTemplateElement)) return;
+  const fragment = travelerDepartureTemplate.content.cloneNode(true);
+  travelerDepartureRows.appendChild(fragment);
+  renumberTravelerDepartures();
+  syncDepartureDrivingFields();
+}
+
+function collectTravelerDepartures() {
+  if (!travelerDepartureRows) return { ok: true, data: [] };
+  const rows = Array.from(travelerDepartureRows.querySelectorAll(".departure-row"));
+  const departures = [];
+
+  rows.forEach((row, index) => {
+    const city = stringValue(row.querySelector(".departure-city")?.value || "");
+    const drivingInput = row.querySelector(".departure-driving");
+    const driveHoursInput = row.querySelector(".departure-max-drive-hours");
+    const drivingSelected = drivingInput?.checked === true;
+    const maxDriveHours = drivingSelected ? optionalInt(driveHoursInput?.value || "") : null;
+
+    if (!city) return;
+    departures.push({
+      traveler: `Group ${index + 1}`,
+      city,
+      isDriving: drivingSelected,
+      maxDriveHours: drivingSelected ? maxDriveHours : null
+    });
+  });
+
+  return { ok: true, data: departures };
+}
+
+function renumberTravelerDepartures() {
+  if (!travelerDepartureRows) return;
+  travelerDepartureRows.querySelectorAll(".departure-row").forEach((row, index) => {
+    const label = row.querySelector(".departure-group-label");
+    const removeButton = row.querySelector(".remove-traveler-departure-btn");
+    if (label) {
+      label.textContent = `${ordinalWord(index + 1)} departure city`;
+    }
+    if (removeButton) removeButton.hidden = index === 0;
+  });
+}
+
+function ordinalWord(value) {
+  const words = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
+  if (value >= 1 && value <= words.length) return words[value - 1];
+  const mod100 = value % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
+  const mod10 = value % 10;
+  if (mod10 === 1) return `${value}st`;
+  if (mod10 === 2) return `${value}nd`;
+  if (mod10 === 3) return `${value}rd`;
+  return `${value}th`;
+}
+
+function deriveOverallMaxDriveHours(departures) {
+  const hours = departures
+    .map((entry) => entry.maxDriveHours)
+    .filter((value) => Number.isFinite(value));
+  if (hours.length === 0) return null;
+  return Math.max(...hours);
+}
+
 function syncCompletionStatus() {
   const total = 6;
   const completed = countCompletedSections();
@@ -304,8 +416,8 @@ function countCompletedSections() {
   const datesReady = Boolean(stringValue(fd.get("start_date")) && stringValue(fd.get("end_date")));
   const destinationReady = fd.get("open_to_suggestions") === "on" || Boolean(stringValue(fd.get("destination_preference")));
   const groupReady = Boolean(optionalInt(fd.get("group_size"))) && intakeForm.querySelectorAll("input[name='skill_levels']:checked").length > 0;
-  const travelMode = stringValue(fd.get("travel_mode"));
-  const travelReady = Boolean(travelMode);
+  const departures = collectTravelerDepartures();
+  const travelReady = departures.ok && departures.data.length > 0;
   const budgetReady = Boolean(optionalInt(fd.get("budget_per_person")));
   const lodgingReady = Boolean(stringValue(fd.get("lodging_style_preference")));
   const rentalReady = Boolean(stringValue(fd.get("rental_required")));

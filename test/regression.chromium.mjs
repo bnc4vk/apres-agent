@@ -22,11 +22,13 @@ const baseScenarios = [
       group_size: "8",
       group_rider_mix: "hybrid",
       skill_levels: ["intermediate", "advanced"],
-      travel_mode: "flexible",
       max_drive_hours: "",
+      traveler_departures: [
+        { city: "San Francisco, CA", is_driving: true, max_drive_hours: "7" },
+        { city: "New York, NY", is_driving: false }
+      ],
       budget_per_person: "1500",
       pass_preset: "ikon",
-      pass_breakdown: "",
       lodging_style_preference: "shared_house",
       min_bedrooms: "4",
       max_walk_minutes: "15",
@@ -49,11 +51,10 @@ const baseScenarios = [
       group_size: "5",
       group_rider_mix: "snowboarders",
       skill_levels: ["beginner", "intermediate"],
-      travel_mode: "drive_only",
       max_drive_hours: "6",
+      traveler_departures: [{ city: "San Jose, CA", is_driving: true, max_drive_hours: "6" }],
       budget_per_person: "900",
       pass_preset: "none",
-      pass_breakdown: "",
       lodging_style_preference: "separate_rooms",
       min_bedrooms: "2",
       max_walk_minutes: "",
@@ -79,11 +80,13 @@ const expandedScenarios = [
       group_size: "10",
       group_rider_mix: "hybrid",
       skill_levels: ["beginner", "intermediate", "advanced"],
-      travel_mode: "mixed_driver_required",
       max_drive_hours: "",
+      traveler_departures: [
+        { city: "Denver, CO", is_driving: true, max_drive_hours: "5" },
+        { city: "Boston, MA", is_driving: false }
+      ],
       budget_per_person: "1200",
-      pass_preset: "explicit_breakdown",
-      pass_breakdown: "6 Ikon, 2 Epic, 2 no pass",
+      pass_preset: "ikon",
       lodging_style_preference: "shared_house",
       min_bedrooms: "5",
       max_walk_minutes: "10",
@@ -106,11 +109,10 @@ const expandedScenarios = [
       group_size: "6",
       group_rider_mix: "skiers",
       skill_levels: ["intermediate", "advanced", "expert"],
-      travel_mode: "flexible",
       max_drive_hours: "8",
+      traveler_departures: [{ city: "Chicago, IL", is_driving: false }],
       budget_per_person: "1800",
       pass_preset: "epic",
-      pass_breakdown: "",
       lodging_style_preference: "separate_rooms",
       min_bedrooms: "3",
       max_walk_minutes: "12",
@@ -261,16 +263,21 @@ async function fillScenario(page, f) {
     await page.check(`input[name="skill_levels"][value="${skill}"]`);
   }
 
-  if (f.travel_mode) await page.selectOption('select[name="travel_mode"]', f.travel_mode);
-  if (f.travel_mode === "drive_only" || f.travel_mode === "mixed_driver_required") {
-    await page.fill('input[name="max_drive_hours"]', f.max_drive_hours || "");
+  if (Array.isArray(f.traveler_departures) && f.traveler_departures.length > 0) {
+    for (let index = 0; index < f.traveler_departures.length; index += 1) {
+      const departure = f.traveler_departures[index];
+      if (index > 0) await page.click("#add-traveler-departure-btn");
+      const row = page.locator("#traveler-departure-rows .departure-row").nth(index);
+      await row.locator(".departure-city").fill(departure.city || "");
+      await setCheckbox(row, ".departure-driving", Boolean(departure.is_driving));
+      if (departure.is_driving) {
+        await row.locator(".departure-max-drive-hours").fill(departure.max_drive_hours || f.max_drive_hours || "");
+      }
+    }
   }
 
   await page.fill('input[name="budget_per_person"]', f.budget_per_person);
   if (f.pass_preset) await page.selectOption('select[name="pass_preset"]', f.pass_preset);
-  if (f.pass_preset === "explicit_breakdown") {
-    await page.fill('textarea[name="pass_breakdown"]', f.pass_breakdown || "");
-  }
 
   if (f.lodging_style_preference) {
     await page.selectOption('select[name="lodging_style_preference"]', f.lodging_style_preference);
@@ -281,7 +288,9 @@ async function fillScenario(page, f) {
       details.setAttribute("open", "");
     }
   });
-  await page.fill('input[name="min_bedrooms"]', f.min_bedrooms || "");
+  if (f.lodging_style_preference === "shared_house") {
+    await page.fill('input[name="min_bedrooms"]', f.min_bedrooms || "");
+  }
   await page.fill('input[name="max_walk_minutes"]', f.max_walk_minutes || "");
 
   await setCheckbox(page, 'input[name="hot_tub_required"]', !!f.hot_tub_required);
@@ -296,9 +305,10 @@ async function fillScenario(page, f) {
 }
 
 async function setCheckbox(page, selector, checked) {
-  const current = await page.isChecked(selector);
-  if (checked && !current) await page.check(selector);
-  if (!checked && current) await page.uncheck(selector);
+  const target = page.locator(selector);
+  const current = await target.isChecked();
+  if (checked && !current) await target.check();
+  if (!checked && current) await target.uncheck();
 }
 
 function ensureDir(dir) {
